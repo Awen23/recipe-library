@@ -1,0 +1,47 @@
+# Recipe Library
+
+A searchable library of the recipes in my YouTube cooking playlist, with one entry per recipe that deep-links to where it starts. What we're building and the current phase are in [docs/SPEC.md](docs/SPEC.md).
+
+## Commands
+*Added in PR 1.*
+
+## Stack (fixed)
+- **Backend:** Python 3.12+, `pip` with a virtual environment, FastAPI.
+- **Frontend:** React + TypeScript.
+- **Hosting:** Fly.io (`lhr`) with a Dockerfile and migrations in `release_command`, following the pattern in `../geogames`.
+- **Database:** SQLite on a Fly volume. The app is for personal use for now. Before anyone else uses it, we will reconsider this decision and consider moving it e.g. to Postgres, so keep all database access in one module and search in one function.
+- **Secrets:** `.env` locally (never committed), `fly secrets` in production.
+
+Everything else is decided at the step that needs it (see "Architecture decisions" below).
+
+## How we work
+
+### Background
+I don't have deep Python experience yet, but I know backend systems well through Laravel (and Node/TypeScript). The secondary goal of this project is to ensure I deepen my understanding of Python.
+
+### Priorities
+A good codebase comes first. Making sure I understand it is a close second. By the end I should be able to:
+- explain how the project works
+- read its Python fluently, and know the alternatives to the choices made
+- understand where Python patterns differ from Laravel's
+
+### Architecture decisions
+Before any architectural decision (a library, a pattern, a project structure), use a subagent to research current Python best practices, patterns and libraries, and look for alternatives. Then explain the options to me with their trade-offs and **sources**, and let me choose.
+
+### Challenges
+While building, occasionally give me a small challenge to write a piece by hand:
+- Pick pieces that deepen my understanding of this codebase, not busywork.
+- Link me to documentation with examples, or point me to a place in the codebase where something similar is already done.
+- Friction is essential: don't hand me the answer. Hints are fine; give the solution only if I ask for it explicitly.
+- Review what I write by saying what's wrong and why, without writing the fix.
+
+### Spec first
+Plan every non-trivial step against `docs/SPEC.md` before writing code. Things we discuss and defer go in its "Later" section.
+
+### Branches and PRs
+- One branch and one PR per step in the spec.
+- **I create every PR myself. Never open one.** You can draft the description for me to rework.
+- Each PR description has:
+  - **Overview:** the problem this PR solves, and why
+  - **Key architecture decisions:** what was chosen, and why
+  - **Alternatives considered:** what was rejected, and why
