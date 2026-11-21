@@ -13,15 +13,14 @@ I save cooking videos to a YouTube playlist, and it's become a poor source of re
 I don't yet know what the data looks like, so the plan starts by finding out. Only the next phase is planned in detail. Later phases are shaped by what the earlier ones find.
 
 ## 2. Phases
-1. **Understand the playlist.** Fetch it, and measure what's actually there: how recipes are split across videos, how Shorts differ, and where recipe details live. *(Planned in Section 4.)*
-2. **A searchable library.** A deployed web app (Python API, React + TypeScript frontend) built from what Phase 1 found, using plain code wherever plain code does the job.
-3. **Fill the gaps.** Improve where Phase 2 falls short (e.g. searching by ingredient), with whichever approach the data shows works. That may be plain code, or it may be AI if it's genuinely needed.
+1. **Understand the playlist.** Fetch it, and measure what's actually there: how recipes are split across videos, how Shorts differ, and where recipe details live. *(Done: findings in Section 4.)*
+2. **Useful info for every recipe.** Turn each video into one entry per recipe, with a name, a start time where there is one, and the recipe's ingredients and method wherever they can be found. Plain code does what it can, and AI does the parts Phase 1 showed plain code can't. *(Planned in Section 5.)*
+3. **Rating and sorting.** Hide the recipes in a multi-recipe video that I'm not interested in, and rate my interest in the rest, so the library can be filtered down to what I'd actually cook.
+4. **The UI.** A deployed web app (Python API, React + TypeScript frontend) for searching, filtering and rating the library.
 
 ## 3. Later
 Ideas deferred while we focus on the current phase. Added to as we discuss and defer things.
-- **Mixed interest:** marking recipes I'd cook again, and filtering by it.
 - **Refreshing the library from the app** (e.g. a "refresh playlist" button), instead of running a fetch command.
-- **The data model** is designed in Phase 2, once Phase 1 shows what the data looks like. It's stored in SQLite.
 - **Other people's playlists:** sign in with Google (`youtube.readonly` scope, which needs Google's app verification for a public launch). Before anyone else uses the app, move from SQLite to Postgres.
 
 Out of scope: transcripts and audio (official captions only work for your own videos, and scrapers break YouTube's terms), and dietary filters.
@@ -59,12 +58,84 @@ Only code worth keeping is merged. Exploration isn't a PR.
   - **Chapter parser:** one table of description text → expected chapters. The cases are chosen once we've seen what the real descriptions look like.
 - *Done when:* every available video is in the JSON file with its chapters, and the tests pass.
 
-**Then: exploration** *(not a PR)*
-Claude works through the fetched data directly, using throwaway scripts outside the repo, and reports back:
-- the answers to the questions above, with counts
-- a label for every video, with a confidence
-- for me to check: every video under 90% confidence, plus a random 5% of the rest
-- for me to check: every long-form video with no timestamps in its description. Some may be multi-recipe videos whose only chapters are YouTube's automatic ones, which the API doesn't return.
-- a short sample of the comments API on a few videos (Question 5)
+**Then: exploration** *(done, not a PR)*
+Claude labelled every video, using throwaway scripts outside the repo: first from the title, description and chapters, then again with the top 20 comments for the uncertain ones. Instead of checking every uncertain video, I spot-checked the 10 least certain. They matched the labels, so the labels are trusted as a general picture. They're kept in the git-ignored `api/data/exploration/`.
 
-I check those videos, the answers are corrected where I disagree, and the findings are written into this spec along with an outline of Phase 2.
+### Findings
+Counts are from the 434 available videos. "Shorts" means 3 minutes or less, because the API doesn't mark them.
+
+1. **Multi-recipe videos:** 81 videos hold about 400 recipes, so the playlist has about 740 recipes in all.
+   - 76 of the 81 are long-form, so 64% of long videos are multi-recipe. Only 5 are Shorts.
+   - 56 of the 81 have chapters in their description.
+2. **Chapters:**
+   - In 38 of those 56, each chapter is one recipe, apart from intros and outros. "Intro" alone appears 55 times.
+   - In the other 18, recipe chapters are mixed with steps or padding ("make the toppings", "errands interlude").
+   - 49 long videos have no timestamps in their description, and 20 of them are multi-recipe. Some of these show YouTube's automatic chapters on the video.
+3. **Shorts are different:** 304 of 315 are a single recipe, none have chapters, and 114 have an empty description. For a Short, the work is finding the recipe, not splitting the video.
+4. **Where recipes live** (the first source found for each video):
+
+   | Source | Shorts (315) | Long (119) |
+   |---|---|---|
+   | Description (ingredient list) | 71 | 53 |
+   | Creator's comment | 60 | 1 |
+   | Link to a recipe page | 84 | 54 |
+   | App or paid | 12 | 3 |
+   | Not found | 88 | 8 |
+
+5. **Comments:** an API key can read them (1 quota unit per video). The creator's own comment is identifiable, because its author is the video's channel. It's the only source of the recipe for 60 Shorts.
+6. **Where plain code falls short:**
+   - **Plain code can:** fetch creator comments, skip intro and outro chapters, find ingredient lists, and pull out recipe links.
+   - **Plain code can't:** tell recipe chapters from step chapters (18 videos), name the dish when the title is clickbait ("EVERYONE can like tofu!"), or find start times for videos with no timestamps in their description (20 videos). The comments often name the dish, and Claude's labels did this well.
+7. **Linked recipe pages often have structured data:** 212 videos link to a page that isn't social media or a shop, checking up to 3 links each. For 119 of them, the page has schema.org `Recipe` data with an ingredient list, and for 100 of those the description has no ingredient list of its own. 74 pages had no recipe data (Substack posts, Google Docs, ebook shops, some blogs), and 19 were blocked or failed.
+8. **Some videos are assemblies, not recipes** (for example a lunch box put together from ready foods). An entry named after the video is enough for these.
+
+## 5. Phase 2: useful info for every recipe
+
+### Goal
+Every video becomes one or more **entries**, one per recipe, ready for rating (Phase 3) and the UI (Phase 4). Each entry has:
+- a name
+- its video
+- a start time, or none if the description has no timestamp for it
+- the recipe itself where it can be found: an **ingredients** list and a **method**
+- the recipe's source: the description, the creator's comment, or a link. When the recipe couldn't be read (an app, a paywall, or a page without recipe data), the link is where to find it.
+
+Each video also keeps its **thumbnail** and whether it's a **Short**, for the UI.
+
+### How the data is kept
+- **Fetched data and entries are kept apart.** Videos, comments and fetched recipe pages are stored as they arrived. Entries are worked out from them, so entries can be rebuilt while developing without fetching again.
+- **Each entry gets an ID when it's created, and keeps it,** so Phase 3's ratings stay attached. Fetching the playlist again only adds entries for new videos, and leaves existing entries alone. A video that leaves the playlist, and its entries, are marked as gone, not deleted.
+- **Each field records where it came from:** plain code, AI (with how sure it was), or a correction I made by hand. Hand corrections always win over code and AI, so a re-run never overwrites them.
+- **The schema is designed once, up front,** with room for everything above, even where later PRs fill it in.
+
+### PRs
+An outline only. Each PR is planned in detail before it starts, and its architecture decisions are made then, such as how the app talks to SQLite, the migration tool, and which AI model to use. Each PR uses AI where plain code can't do the job, so no PR leaves entries half-right. The first PR to use AI sets it up.
+
+**1. Fetched data in SQLite**
+- Replace the JSON file with SQLite through `storage.py`, using the full schema from "How the data is kept".
+- Store the videos (with their thumbnail and whether they're a Short) and their chapters.
+- `recipes` also fetches each video's top comments, and stores the ones by the video's own channel.
+- *Plain code only.*
+
+**2. Entries**
+- **Plain code:** split videos at their chapters, give videos without chapters one entry, and use chapter titles as names.
+- **AI:**
+  - Check every video with chapters, deciding which chapters are recipes and which are steps or padding (such as "make the toppings" or "errands interlude"). Some single-recipe videos have step chapters.
+  - Count and name the recipes in multi-recipe videos with no timestamps.
+  - Name every entry that has no chapter title, using the video title, the description and the creator's comment.
+
+PRs 3 and 4 look for each entry's recipe one place at a time, most common first, and stop at the first place that has its ingredients. Linked pages come first: they're the most common source, and reading them needs no AI.
+
+**3. Recipes from links**
+- **Plain code:** fetch each linked page that isn't social media or a shop, and read its schema.org `Recipe` data (`recipeIngredient`, `recipeInstructions`).
+
+**4. Recipes from text**
+For entries still without a recipe:
+- **Plain code:** skip any text with no ingredient-like lines (amounts such as "2 tbsp" or "400g", or an "Ingredients" heading), so AI only reads text that's likely to hold a recipe.
+- **AI:** find the ingredients and method in the description first, then in the creator's comment. This covers matching them to the right recipe when one description covers several, leaving out lines that aren't ingredients ("Save 10% on…"), and tidying lines such as "1-2 leeks, chopped or a few handfuls spinach" into ingredient names that can be searched.
+
+*Done when:* the numbers roughly match what Phase 1 found, so anything the code misses shows up.
+- **Entries:** about 740, and every available video has at least one.
+- **Ingredients:** found for about as many videos as Phase 1 found, from each source: about 120 from descriptions, 60 from creator comments and 120 from linked pages.
+- **Agreement:** on a random sample of 30 videos, the number of recipes matches the exploration labels in `api/data/exploration/` for at least 27.
+- **Fetching again:** keeps every entry's ID, and leaves hand corrections untouched.
+- **AI-made fields** are marked as AI-made, and the tests pass.
