@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from recipes.playlist import Playlist
@@ -34,9 +35,26 @@ def test_save_writes_the_playlist_as_json(tmp_path: Path) -> None:
                 "duration_seconds": 1157,
                 "published_at": "2025-06-17T08:39:43Z",
                 "channel_title": "Amanda Ducks",
+                "chapters": [],
             }
         ],
     }
+
+
+def test_save_includes_the_chapters_in_each_description(tmp_path: Path) -> None:
+    # videos.json has trimmed descriptions, so use the full one with its timestamps.
+    description = read_fixture("descriptions.json")["whr7iOKRXTA"]
+    with_chapters = replace(video("whr7iOKRXTA"), description=description)
+    path = tmp_path / "playlist.json"
+
+    save_playlist(Playlist("PLAYLIST_ID", (with_chapters,), 0), path)
+
+    [saved] = json.loads(path.read_text(encoding="utf-8"))["videos"]
+    assert saved["chapters"][:2] == [
+        {"start_seconds": 0, "title": "Intro"},
+        {"start_seconds": 102, "title": "Breakfasts"},
+    ]
+    assert len(saved["chapters"]) == 6
 
 
 def test_save_keeps_non_english_text_readable(tmp_path: Path) -> None:
