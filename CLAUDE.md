@@ -10,6 +10,7 @@ cd api
 py -3.14 -m venv .venv                 # first time only
 source .venv/Scripts/activate          # every new shell
 pip install -e . --group dev           # install the app (editable) and dev tools
+pre-commit install                     # first time only: ruff and mypy run on every commit
 
 pytest                                 # tests
 ruff check .                           # lint

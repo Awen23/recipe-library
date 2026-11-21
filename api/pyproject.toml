@@ -13,9 +13,10 @@ classifiers = ["Private :: Do Not Upload"]
 [dependency-groups]
 dev = [
     "pytest>=9",
-    "ruff",
+    "ruff==0.17.6",  # keep equal to `rev` in .pre-commit-config.yaml
     "mypy",
     "pip-tools",
+    "pre-commit",
 ]
 
 [tool.hatch.build.targets.wheel]
