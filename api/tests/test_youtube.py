@@ -54,29 +54,45 @@ def test_video_from_api_maps_youtube_fields_to_ours() -> None:
     )
 
 
-def test_playlist_video_ids_asks_for_the_playlist_and_reads_its_ids(
-    fake_api: FakeYouTubeApi,
-) -> None:
+def test_playlist_video_ids_asks_for_the_playlist(fake_api: FakeYouTubeApi) -> None:
+    with YouTubeClient("test-key", transport=fake_api.transport) as client:
+        client.playlist_video_ids("PLAYLIST_ID")
+
+    # The fake answers the same whatever we send, so check what we asked for here.
+    first_request = fake_api.requests[0]
+    assert first_request.url.path.endswith("/playlistItems")
+    assert first_request.url.params["playlistId"] == "PLAYLIST_ID"
+    assert first_request.url.params["part"] == "contentDetails"
+
+
+def test_playlist_video_ids_follows_next_page_token(fake_api: FakeYouTubeApi) -> None:
     with YouTubeClient("test-key", transport=fake_api.transport) as client:
         video_ids = client.playlist_video_ids("PLAYLIST_ID")
 
-    # What we asked for: the fake answers the same whatever we send, so check it here.
-    [request] = fake_api.requests
-    assert request.url.path.endswith("/playlistItems")
-    assert request.url.params["playlistId"] == "PLAYLIST_ID"
-    assert request.url.params["part"] == "contentDetails"
-    # What we read back. The deleted video is still listed: the playlist keeps an
-    # entry for it.
-    assert video_ids == ["whr7iOKRXTA", "nHr9LqK3PKc", "Iop_LKTis_U"]
+    # Both pages, in order. Deleted and private videos are still listed: the playlist
+    # keeps an entry for them.
+    assert video_ids == [
+        "whr7iOKRXTA",
+        "nHr9LqK3PKc",
+        "Iop_LKTis_U",  # deleted
+        "eG0tXlljTtI",
+        "gOxwhuntyMY",
+        "H0tkAEL6CS8",
+        "d9yFMrsKQWk",  # private
+    ]
+    # The second request carried page 1's token, and there was no third.
+    page_two_token = read_fixture("playlist_items_page_1.json")["nextPageToken"]
+    page_tokens = [request.url.params.get("pageToken") for request in fake_api.requests]
+    assert page_tokens == [None, page_two_token]
 
 
 def test_api_key_is_sent_in_a_header_not_the_url(fake_api: FakeYouTubeApi) -> None:
     with YouTubeClient("test-key", transport=fake_api.transport) as client:
         client.playlist_video_ids("PLAYLIST_ID")
 
-    [request] = fake_api.requests
-    assert request.headers["X-Goog-Api-Key"] == "test-key"
-    assert "test-key" not in str(request.url)
+    for request in fake_api.requests:
+        assert request.headers["X-Goog-Api-Key"] == "test-key"
+        assert "test-key" not in str(request.url)
 
 
 def test_exhausted_quota_raises_quota_error() -> None:
@@ -102,12 +118,12 @@ def test_other_api_errors_include_youtubes_message() -> None:
 
 
 def test_videos_returns_only_what_the_api_describes(fake_api: FakeYouTubeApi) -> None:
+    page_one_ids = ["whr7iOKRXTA", "nHr9LqK3PKc", "Iop_LKTis_U"]
     with YouTubeClient("test-key", transport=fake_api.transport) as client:
-        video_ids = client.playlist_video_ids("PLAYLIST_ID")
-        videos = client.videos(video_ids)
+        videos = client.videos(page_one_ids)
 
     # Our part: every listed ID is asked for, including the deleted one.
-    videos_request = fake_api.requests[1]
+    [videos_request] = fake_api.requests
     assert videos_request.url.params["id"] == "whr7iOKRXTA,nHr9LqK3PKc,Iop_LKTis_U"
     assert videos_request.url.params["part"] == "snippet,contentDetails"
     # The API's part: the deleted Iop_LKTis_U has no details, so no Video for it.

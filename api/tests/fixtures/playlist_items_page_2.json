@@ -1,0 +1,25 @@
+{
+  "kind": "youtube#playlistItemListResponse",
+  "items": [
+    {
+      "contentDetails": {
+        "videoId": "eG0tXlljTtI"
+      }
+    },
+    {
+      "contentDetails": {
+        "videoId": "gOxwhuntyMY"
+      }
+    },
+    {
+      "contentDetails": {
+        "videoId": "H0tkAEL6CS8"
+      }
+    },
+    {
+      "contentDetails": {
+        "videoId": "d9yFMrsKQWk"
+      }
+    }
+  ]
+}

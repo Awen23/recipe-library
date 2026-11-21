@@ -77,15 +77,25 @@ class YouTubeClient:
     def __exit__(self, *exc_info: object) -> None:
         self._http.close()
 
+    def get_video_ids_list_from_page(self, page) -> list[str]:
+        return [item["contentDetails"]["videoId"] for item in page["items"]];
+
     def playlist_video_ids(self, playlist_id: str) -> list[str]:
-        """Return the IDs of the videos on the first page of the playlist."""
+        """Return the ID of every video in the playlist, in playlist order."""
         params: dict[str, Any] = {
             "part": "contentDetails",
             "playlistId": playlist_id,
             "maxResults": PAGE_SIZE,
         }
         page = self._get("playlistItems", params)
-        return [item["contentDetails"]["videoId"] for item in page["items"]]
+        results = self.get_video_ids_list_from_page(page);
+
+        while("nextPageToken" in page):
+            params["pageToken"] = page["nextPageToken"];
+            page = self._get("playlistItems", params);
+            results.extend(self.get_video_ids_list_from_page(page));
+
+        return results;
 
     def videos(self, video_ids: Sequence[str]) -> list[Video]:
         """Fetch details for these videos.

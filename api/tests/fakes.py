@@ -16,9 +16,11 @@ def read_fixture(name: str) -> Any:
 class FakeYouTubeApi:
     """Answers requests the way the real API did, and records each request.
 
-    `playlistItems` serves the first page of the real playlist, which still lists a
-    deleted video (`Iop_LKTis_U`). `videos` only has details for the videos in
-    `videos.json`, so, like the real API, it leaves the deleted one out.
+    `playlistItems` serves the real playlist in two pages: seven videos, including a
+    deleted one (`Iop_LKTis_U`) and a private one (`d9yFMrsKQWk`). Page 1 ends with
+    a `nextPageToken`; asking with any `pageToken` gets page 2, which has none.
+    `videos` only has details for the videos in `videos.json`, so, like the real
+    API, it leaves the deleted and private ones out.
     """
 
     def __init__(self) -> None:
@@ -29,7 +31,11 @@ class FakeYouTubeApi:
         self.requests.append(request)
         endpoint = request.url.path.rsplit("/", 1)[-1]
         if endpoint == "playlistItems":
-            return httpx.Response(200, json=read_fixture("playlist_items_page_1.json"))
+            if request.url.params.get("pageToken"):
+                page = read_fixture("playlist_items_page_2.json")
+            else:
+                page = read_fixture("playlist_items_page_1.json")
+            return httpx.Response(200, json=page)
         if endpoint == "videos":
             requested = request.url.params["id"].split(",")
             response = read_fixture("videos.json")
