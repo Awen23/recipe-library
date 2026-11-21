@@ -7,8 +7,11 @@ name = "recipe-library"
 version = "0.1.0"
 description = "A searchable library of the recipes in a YouTube cooking playlist."
 requires-python = ">=3.14"
-dependencies = ["httpx>=0.28"]
+dependencies = ["httpx>=0.28", "python-dotenv>=1.2"]
 classifiers = ["Private :: Do Not Upload"]
+
+[project.scripts]
+recipes = "recipes.entrypoints.cli:main"  # the `recipes` command
 
 [dependency-groups]
 dev = [
