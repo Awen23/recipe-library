@@ -4,7 +4,7 @@
 
 ## 1. Overview
 I save cooking videos to a YouTube playlist, and it's become a poor source of recipes: **it's too unruly to look through** when I want something to cook. Three main things make it unruly:
-1. **Volume.** There are 463 videos, and YouTube loads them a page at a time with no search across what's inside them.
+1. **Volume.** There are 436 videos, and YouTube loads them a page at a time with no search across what's inside them.
 2. **Multi-recipe videos.** In a "4 recipes" video I may only care about one or two, and finding them again means scrubbing through.
 3. **Mixed interest.** Some saved recipes I'd cook again, and some I'm only mildly curious about, all in one undifferentiated list.
 
@@ -29,7 +29,7 @@ Out of scope: transcripts and audio (official captions only work for your own vi
 ## 4. Phase 1: understand the playlist
 
 ### Goal
-Know what the 463 videos actually contain, well enough to decide what Phase 2 builds. Claude labels every video, and then I check two groups by hand: 1. any it's less than 90% sure of, and 2. a random 5% of the rest.
+Know what the 436 videos actually contain, well enough to decide what Phase 2 builds. Claude labels every video, and then I check two groups by hand: 1. any it's less than 90% sure of, and 2. a random 5% of the rest.
 
 ### Questions this phase answers
 1. How many videos are multi-recipe, and **how many of those have chapters?**
@@ -42,20 +42,20 @@ Know what the 463 videos actually contain, well enough to decide what Phase 2 bu
 ### PRs
 Only code worth keeping is merged. Exploration isn't a PR.
 
-**PR 1: Skeleton** *(next)*
-- *Before starting:* Python 3.12+ is installed.
+**PR 1: Skeleton** *(done)*
+- *Before starting:* Python 3.14 is installed.
 - Python project set up with `pip` and a virtual environment; `pytest` for tests and `ruff` for lint and format.
-- `.gitignore` (`.env`, cached data, caches) and `.env.example` (`YOUTUBE_API_KEY`, `PLAYLIST_ID`).
+- `.gitignore` (`.env`, cached data, caches) and `.env.example` (`YOUTUBE_API_KEY`).
 - A PR template with the three sections from `CLAUDE.md`.
 - *Done when:* a placeholder test and the linter both pass, each with one command.
 
-**PR 2: Fetch and chapters** *(the only code kept from this phase)*
+**PR 2: Fetch and chapters** *(next, the only code kept from this phase)*
 - *Before starting:* the playlist is set to unlisted, and a YouTube Data API key exists.
-- A `fetch` command: pages through `playlistItems.list`, then fetches details with `videos.list` in batches of 50 (title, description, duration, publish date, channel). Deleted or private videos are skipped and counted.
+- A `recipes <playlist-id>` command (the ID isn't a secret): pages through `playlistItems.list`, then fetches details with `videos.list` in batches of 50 (title, description, duration, publish date, channel). Deleted or private videos are skipped and counted.
 - The results are saved as a git-ignored JSON file. No database yet.
 - A chapter parser: description text in, list of chapters (start time in seconds, title) out, handling the formats the real descriptions use.
 - Tests never call the live API. They use small fixtures in `tests/fixtures/`: trimmed copies of real API responses (a few videos, with the playlist ID replaced) and real description lines.
-  - **Fetch:** follows `nextPageToken` across pages; batches IDs into groups of 50; skips and counts deleted or private videos; converts YouTube's durations (`PT1H2M3S` → 3723 seconds); gives a clear error for a missing key or exhausted quota.
+  - **Fetch:** follows `nextPageToken` across pages; batches IDs into groups of 50; skips and counts deleted or private videos; converts YouTube's durations (`PT19M17S` → 1157 seconds); gives a clear error for a missing key or exhausted quota.
   - **Chapter parser:** one table of description text → expected chapters. The cases are chosen once we've seen what the real descriptions look like.
 - *Done when:* every available video is in the JSON file with its chapters, and the tests pass.
 

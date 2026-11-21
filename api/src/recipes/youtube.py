@@ -8,7 +8,10 @@ from typing import Any, Self
 
 import httpx
 
-_DURATION = re.compile(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$")
+# `PT#H#M#S`, or `P#DT#H#M#S` for videos a day or longer. Parts that are zero are
+# left out. See `contentDetails.duration` in
+# https://developers.google.com/youtube/v3/docs/videos
+_DURATION = re.compile(r"^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
 
 
 def parse_duration(value: str) -> int:
@@ -16,8 +19,8 @@ def parse_duration(value: str) -> int:
     match = _DURATION.match(value)
     if match is None:
         raise ValueError(f"Unrecognised duration: {value!r}")
-    hours, minutes, seconds = (int(part or 0) for part in match.groups())
-    return hours * 3600 + minutes * 60 + seconds
+    days, hours, minutes, seconds = (int(part or 0) for part in match.groups())
+    return days * 86400 + hours * 3600 + minutes * 60 + seconds
 
 
 @dataclass(frozen=True)
