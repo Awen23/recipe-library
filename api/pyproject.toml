@@ -7,15 +7,19 @@ name = "recipe-library"
 version = "0.1.0"
 description = "A searchable library of the recipes in a YouTube cooking playlist."
 requires-python = ">=3.14"
-dependencies = []
+dependencies = ["httpx>=0.28", "python-dotenv>=1.2"]
 classifiers = ["Private :: Do Not Upload"]
+
+[project.scripts]
+recipes = "recipes.entrypoints.cli:main"  # the `recipes` command
 
 [dependency-groups]
 dev = [
     "pytest>=9",
-    "ruff",
+    "ruff==0.17.6",  # keep equal to `rev` in .pre-commit-config.yaml
     "mypy",
     "pip-tools",
+    "pre-commit",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -23,6 +27,7 @@ packages = ["src/recipes"]
 
 [tool.pytest]
 testpaths = ["tests"]
+pythonpath = ["tests"]  # lets tests import helpers from tests/fakes.py
 addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
@@ -30,6 +35,9 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-local-folder = ["fakes"]
 
 [tool.mypy]
 python_version = "3.14"

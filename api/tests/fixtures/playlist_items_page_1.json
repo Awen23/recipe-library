@@ -1,0 +1,21 @@
+{
+  "kind": "youtube#playlistItemListResponse",
+  "nextPageToken": "EAAaHlBUOkNESWlFRUkxTnpFd05EUTFPRUUzTXpFNE5qTQ",
+  "items": [
+    {
+      "contentDetails": {
+        "videoId": "whr7iOKRXTA"
+      }
+    },
+    {
+      "contentDetails": {
+        "videoId": "nHr9LqK3PKc"
+      }
+    },
+    {
+      "contentDetails": {
+        "videoId": "Iop_LKTis_U"
+      }
+    }
+  ]
+}

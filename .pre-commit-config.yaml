@@ -1,0 +1,22 @@
+# Checks that run on `git commit`. Set up once per clone with `pre-commit install`
+# (from api/, with the venv active). Run them by hand: `pre-commit run --all-files`.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.6  # keep equal to the ruff pin in api/pyproject.toml
+    hooks:
+      - id: ruff-format
+        args: [--check]  # report only: run `ruff format .` yourself to fix
+        files: ^api/
+      - id: ruff-check
+        files: ^api/
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        # The venv's mypy, run from api/ so it uses api/pyproject.toml and sees
+        # the installed packages. `Scripts` is the venv's folder on Windows.
+        entry: sh -c "cd api && .venv/Scripts/mypy"
+        language: unsupported
+        files: ^api/.*\.py$
+        pass_filenames: false
