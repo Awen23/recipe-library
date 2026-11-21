@@ -77,9 +77,6 @@ class YouTubeClient:
     def __exit__(self, *exc_info: object) -> None:
         self._http.close()
 
-    def get_video_ids_list_from_page(self, page) -> list[str]:
-        return [item["contentDetails"]["videoId"] for item in page["items"]];
-
     def playlist_video_ids(self, playlist_id: str) -> list[str]:
         """Return the ID of every video in the playlist, in playlist order."""
         params: dict[str, Any] = {
@@ -88,14 +85,12 @@ class YouTubeClient:
             "maxResults": PAGE_SIZE,
         }
         page = self._get("playlistItems", params)
-        results = self.get_video_ids_list_from_page(page);
-
-        while("nextPageToken" in page):
-            params["pageToken"] = page["nextPageToken"];
-            page = self._get("playlistItems", params);
-            results.extend(self.get_video_ids_list_from_page(page));
-
-        return results;
+        video_ids = _video_ids_on(page)
+        while "nextPageToken" in page:
+            params["pageToken"] = page["nextPageToken"]
+            page = self._get("playlistItems", params)
+            video_ids.extend(_video_ids_on(page))
+        return video_ids
 
     def videos(self, video_ids: Sequence[str]) -> list[Video]:
         """Fetch details for these videos.
@@ -115,6 +110,11 @@ class YouTubeClient:
             raise _error_from(response)
         body: dict[str, Any] = response.json()
         return body
+
+
+def _video_ids_on(page: dict[str, Any]) -> list[str]:
+    """The video IDs on one page of a `playlistItems` response."""
+    return [item["contentDetails"]["videoId"] for item in page["items"]]
 
 
 def _error_from(response: httpx.Response) -> YouTubeError:
