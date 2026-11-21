@@ -7,7 +7,7 @@ name = "recipe-library"
 version = "0.1.0"
 description = "A searchable library of the recipes in a YouTube cooking playlist."
 requires-python = ">=3.14"
-dependencies = []
+dependencies = ["httpx>=0.28"]
 classifiers = ["Private :: Do Not Upload"]
 
 [dependency-groups]
