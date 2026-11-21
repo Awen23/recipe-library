@@ -30,6 +30,40 @@ TIMESTAMP_FIRST = [
     ),
 ]
 
+# 22 videos put the timestamp at the end of the line instead.
+TIMESTAMP_LAST = [
+    pytest.param("intro 0:00", [Chapter(0, "intro")], id="last: plain"),
+    pytest.param("intro: 0:00", [Chapter(0, "intro")], id="last: colon before"),
+    pytest.param(
+        "#1 Peanut Sweet Potato Stew 0:54",
+        [Chapter(54, "#1 Peanut Sweet Potato Stew")],
+        id="last: numbered recipe",
+    ),
+    pytest.param(
+        "#4 No Bake Cinnamon Raisin Bars  6:04",
+        [Chapter(364, "#4 No Bake Cinnamon Raisin Bars")],
+        id="last: double space",
+    ),
+    pytest.param(
+        "#2.5 BEST Iced Chai Latte 3:35 ",
+        [Chapter(215, "#2.5 BEST Iced Chai Latte")],
+        id="last: trailing space",
+    ),
+    pytest.param(
+        "#3 Green Pasta 💚 4:05", [Chapter(245, "#3 Green Pasta 💚")], id="last: emoji"
+    ),
+    pytest.param(
+        "how to iron (plantbased) 0:54",
+        [Chapter(54, "how to iron (plantbased)")],
+        id="last: bracket before",
+    ),
+    pytest.param(
+        "Japan vlog / E Sim Discount 3:38 ",
+        [Chapter(218, "Japan vlog / E Sim Discount")],
+        id="last: not a recipe",
+    ),
+]
+
 NO_CHAPTER = [
     pytest.param(
         "Full Recipe + Nutritional Info: https://goodfoodbaddie.com/blueberry-baked-oatmeal/",
@@ -50,7 +84,9 @@ RULES = [
 ]
 
 
-@pytest.mark.parametrize(("line", "expected"), TIMESTAMP_FIRST + NO_CHAPTER + RULES)
+@pytest.mark.parametrize(
+    ("line", "expected"), TIMESTAMP_FIRST + TIMESTAMP_LAST + NO_CHAPTER + RULES
+)
 def test_parse_chapters_line(line: str, expected: list[Chapter]) -> None:
     assert parse_chapters(line) == expected
 
@@ -65,6 +101,20 @@ def test_parse_chapters_in_a_whole_description() -> None:
         Chapter(685, "Sticky lemon & garlic tofu"),
         Chapter(857, "Hearty vegan lasagne"),
         Chapter(1011, "Raspberry oat bars"),
+    ]
+
+
+def test_parse_chapters_in_a_whole_description_with_timestamps_last() -> None:
+    description = read_fixture("descriptions.json")["nHr9LqK3PKc"]
+
+    assert parse_chapters(description) == [
+        Chapter(0, "intro"),
+        Chapter(54, "#1 Peanut Sweet Potato Stew"),
+        Chapter(177, "#2 Tofu Burger Patties"),
+        Chapter(256, "#3 Berry Breakfast Crumble Bars"),
+        Chapter(400, "#4 Tofu Enchiladas"),
+        Chapter(661, "#5 Whipped Bean Cookie Dough"),
+        Chapter(767, "#6 Two Overnight Focaccias"),
     ]
 
 
