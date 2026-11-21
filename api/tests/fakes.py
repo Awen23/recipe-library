@@ -17,7 +17,8 @@ class FakeYouTubeApi:
     """Answers requests the way the real API did, and records each request.
 
     `playlistItems` serves the first page of the real playlist, which still lists a
-    deleted video (`Iop_LKTis_U`).
+    deleted video (`Iop_LKTis_U`). `videos` only has details for the videos in
+    `videos.json`, so, like the real API, it leaves the deleted one out.
     """
 
     def __init__(self) -> None:
@@ -29,4 +30,9 @@ class FakeYouTubeApi:
         endpoint = request.url.path.rsplit("/", 1)[-1]
         if endpoint == "playlistItems":
             return httpx.Response(200, json=read_fixture("playlist_items_page_1.json"))
+        if endpoint == "videos":
+            requested = request.url.params["id"].split(",")
+            response = read_fixture("videos.json")
+            response["items"] = [i for i in response["items"] if i["id"] in requested]
+            return httpx.Response(200, json=response)
         return httpx.Response(404)

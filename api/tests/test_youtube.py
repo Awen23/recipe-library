@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from recipes.youtube import (
+    PAGE_SIZE,
     QuotaExceededError,
     Video,
     YouTubeClient,
@@ -53,11 +54,19 @@ def test_video_from_api_maps_youtube_fields_to_ours() -> None:
     )
 
 
-def test_playlist_video_ids_reads_a_page(fake_api: FakeYouTubeApi) -> None:
+def test_playlist_video_ids_asks_for_the_playlist_and_reads_its_ids(
+    fake_api: FakeYouTubeApi,
+) -> None:
     with YouTubeClient("test-key", transport=fake_api.transport) as client:
         video_ids = client.playlist_video_ids("PLAYLIST_ID")
 
-    # The deleted video is still listed: the playlist keeps an entry for it.
+    # What we asked for: the fake answers the same whatever we send, so check it here.
+    [request] = fake_api.requests
+    assert request.url.path.endswith("/playlistItems")
+    assert request.url.params["playlistId"] == "PLAYLIST_ID"
+    assert request.url.params["part"] == "contentDetails"
+    # What we read back. The deleted video is still listed: the playlist keeps an
+    # entry for it.
     assert video_ids == ["whr7iOKRXTA", "nHr9LqK3PKc", "Iop_LKTis_U"]
 
 
@@ -90,3 +99,30 @@ def test_other_api_errors_include_youtubes_message() -> None:
         pytest.raises(YouTubeError, match="HTTP 404.*cannot be found"),
     ):
         client.playlist_video_ids("NOT_A_PLAYLIST")
+
+
+def test_videos_returns_only_what_the_api_describes(fake_api: FakeYouTubeApi) -> None:
+    with YouTubeClient("test-key", transport=fake_api.transport) as client:
+        video_ids = client.playlist_video_ids("PLAYLIST_ID")
+        videos = client.videos(video_ids)
+
+    # Our part: every listed ID is asked for, including the deleted one.
+    videos_request = fake_api.requests[1]
+    assert videos_request.url.params["id"] == "whr7iOKRXTA,nHr9LqK3PKc,Iop_LKTis_U"
+    assert videos_request.url.params["part"] == "snippet,contentDetails"
+    # The API's part: the deleted Iop_LKTis_U has no details, so no Video for it.
+    assert [video.id for video in videos] == ["whr7iOKRXTA", "nHr9LqK3PKc"]
+
+
+def test_videos_batches_ids_in_groups_of_50() -> None:
+    requested_batches: list[list[str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_batches.append(request.url.params["id"].split(","))
+        return httpx.Response(200, json={"items": []})
+
+    video_ids = [f"video{number:06}" for number in range(120)]  # not real IDs
+    with YouTubeClient("test-key", transport=httpx.MockTransport(handler)) as client:
+        client.videos(video_ids)
+
+    assert [len(batch) for batch in requested_batches] == [PAGE_SIZE, PAGE_SIZE, 20]

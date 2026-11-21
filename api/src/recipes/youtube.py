@@ -1,7 +1,9 @@
 """A small client for the parts of the YouTube Data API v3 this project uses."""
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import batched
 from typing import Any, Self
 
 import httpx
@@ -84,6 +86,18 @@ class YouTubeClient:
         }
         page = self._get("playlistItems", params)
         return [item["contentDetails"]["videoId"] for item in page["items"]]
+
+    def videos(self, video_ids: Sequence[str]) -> list[Video]:
+        """Fetch details for these videos.
+
+        Deleted and private videos are left out by the API, so they're missing here.
+        """
+        videos: list[Video] = []
+        for batch in batched(video_ids, PAGE_SIZE, strict=False):
+            params = {"part": "snippet,contentDetails", "id": ",".join(batch)}
+            page = self._get("videos", params)
+            videos.extend(Video.from_api(item) for item in page["items"])
+        return videos
 
     def _get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         response = self._http.get(endpoint, params=params)
