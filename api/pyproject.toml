@@ -23,6 +23,7 @@ packages = ["src/recipes"]
 
 [tool.pytest]
 testpaths = ["tests"]
+pythonpath = ["tests"]  # lets tests import helpers from tests/fakes.py
 addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
@@ -30,6 +31,9 @@ target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.isort]
+known-local-folder = ["fakes"]
 
 [tool.mypy]
 python_version = "3.14"
