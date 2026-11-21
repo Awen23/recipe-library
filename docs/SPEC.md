@@ -49,7 +49,7 @@ Only code worth keeping is merged. Exploration isn't a PR.
 - A PR template with the three sections from `CLAUDE.md`.
 - *Done when:* a placeholder test and the linter both pass, each with one command.
 
-**PR 2: Fetch and chapters** *(next, the only code kept from this phase)*
+**PR 2: Fetch and chapters** *(done, the only code kept from this phase)*
 - *Before starting:* the playlist is set to unlisted, and a YouTube Data API key exists.
 - A `recipes <playlist-id>` command (the ID isn't a secret): pages through `playlistItems.list`, then fetches details with `videos.list` in batches of 50 (title, description, duration, publish date, channel). Deleted or private videos are skipped and counted.
 - The results are saved as a git-ignored JSON file. No database yet.
@@ -64,6 +64,7 @@ Claude works through the fetched data directly, using throwaway scripts outside 
 - the answers to the questions above, with counts
 - a label for every video, with a confidence
 - for me to check: every video under 90% confidence, plus a random 5% of the rest
+- for me to check: every long-form video with no timestamps in its description. Some may be multi-recipe videos whose only chapters are YouTube's automatic ones, which the API doesn't return.
 - a short sample of the comments API on a few videos (Question 5)
 
 I check those videos, the answers are corrected where I disagree, and the findings are written into this spec along with an outline of Phase 2.
