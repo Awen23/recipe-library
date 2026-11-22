@@ -1,7 +1,5 @@
 """The migrations in `migrations/`, run the way `alembic upgrade head` runs them."""
 
-from pathlib import Path
-
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -10,15 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from recipes.storage import chapters, create_engine
 
-PYPROJECT = Path(__file__).parents[1] / "pyproject.toml"  # holds Alembic's settings
 TABLES = {"channels", "videos", "chapters", "creator_comments"}
-
-
-@pytest.fixture
-def alembic_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Config:
-    """Alembic's settings, pointed at a new, empty database for each test."""
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'recipes.db'}")
-    return Config(toml_file=PYPROJECT)
 
 
 def test_upgrade_creates_the_tables(alembic_config: Config) -> None:
