@@ -1,6 +1,6 @@
 # Test fixtures
 
-Trimmed copies of real YouTube Data API responses for the playlist, captured on 20 Nov 2026. Only the fields the code reads are kept.
+Trimmed copies of real YouTube Data API responses for the playlist, captured on 20 Nov 2026. The thumbnails, embedding and channel IDs in `videos.json` were added on 22 Nov 2026. Only the fields the code reads are kept.
 
 - **`videos.json`:** five real videos from the playlist, with descriptions cut to their first lines.
 - **`comment_threads.json`:** the first three of the top comments on `eG0tXlljTtI`. The first is by the video's channel. The other two are by viewers, so their channel IDs are replaced with random IDs of the same shape.
