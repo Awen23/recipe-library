@@ -22,6 +22,9 @@ I don't yet know what the data looks like, so the plan starts by finding out. On
 Ideas deferred while we focus on the current phase. Added to as we discuss and defer things.
 - **Videos that aren't recipes** (a talk, a haul): they're kept as one recipe named after the video, so they can be found. The UI could hide them, and they could get a better name than the video's title.
 - **Refreshing the library from the app** (e.g. a "refresh playlist" button), instead of running a fetch command.
+- **robots.txt:** check each site's before fetching its pages. Every link is one a creator chose, so for now they're fetched like a person following them would.
+- **Links that failed** (a timeout, a busy site) are fetched once and not tried again.
+- **Addresses behind hostnames:** links to this computer or to private IP addresses are refused, but a hostname that resolves to one isn't checked yet. Add it before the app is hosted.
 - **Other people's playlists:** sign in with Google (`youtube.readonly` scope, which needs Google's app verification for a public launch). Before anyone else uses the app, move from SQLite to Postgres.
 
 Out of scope: transcripts and audio (official captions only work for your own videos, and scrapers break YouTube's terms), and dietary filters.
@@ -106,7 +109,7 @@ Each video also keeps its **thumbnail**, its **channel**, and whether it can be 
 - **Fetched data and recipes are kept apart.** Videos, comments and fetched recipe pages are stored as they arrived. Recipes are worked out from them, so working them out never needs another fetch.
 - **Fetching and building again only add new videos and their recipes.** Stored videos and recipes are left as they are, since they're already in use. A video that leaves the playlist is marked as removed, not deleted, and its recipes go with it.
 - **Each recipe gets an ID when it's created, and keeps it,** so Phase 3's ratings stay attached.
-- **Each field records who set it:** plain code, AI (with how sure it was), or a correction I made by hand. Building never changes a stored recipe, so hand corrections are never overwritten.
+- **Each field records who set it:** plain code, AI (with how sure it was), or a correction I made by hand. Building never overwrites a stored field: it only fills in details that are still empty, so hand corrections are kept.
 - **The tables are designed up front, and each PR creates the ones it fills,** with an Alembic migration. All database access goes through `storage.py`.
 
 ### Tables
@@ -122,8 +125,8 @@ Worked out, created in later PRs:
   - `name`, with `name_by` and `name_confidence`
   - `start_seconds`, with `start_by`
   - Each `_by` is `code`, `ai` or `hand`. Code and AI skip any group whose `_by` is `hand`.
-  - PR 3 adds the details: `ingredients` (a JSON list), `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four.
-- **`recipe_pages`** (PR 3): each linked page as fetched: its URL, where it redirected to, when it was fetched, what was found (such as `recipe`, `no recipe data` or `HTTP 403`), and its schema.org `Recipe` data.
+  - PR 3 adds the details: `ingredients` and `method` (JSON lists of lines and steps), `source` and `source_url`, with one `details_by` and `details_confidence` for all four.
+- **`recipe_pages`** (PR 3): each linked page as fetched: its URL, the words beside the link, where it redirected to, when it was fetched, what was found (such as `recipe`, `no recipe data` or `HTTP 403`), and the name, ingredients and steps of its first schema.org `Recipe`. The page itself isn't kept.
 
 ### PRs
 An outline only. Each PR is planned in detail before it starts, and its architecture decisions are made then, such as which AI model to use. Each PR uses AI where plain code can't do the job, so no PR leaves recipes half-right. The first PR to use AI sets it up.
@@ -141,8 +144,9 @@ An outline only. Each PR is planned in detail before it starts, and its architec
 
 PRs 3 and 4 look for each recipe's details one place at a time, most common first, and stop at the first place that has its ingredients. Linked pages come first: they're the most common source, and reading them needs no AI.
 
-**3. Details from links**
-- **Plain code:** fetch each linked page that isn't social media or a shop, keep it in `recipe_pages`, and read its schema.org `Recipe` data (`recipeIngredient`, `recipeInstructions`).
+**3. Details from links** *(done)*
+- `recipes fetch` also fetches the links in new videos' descriptions and creator comments, skipping social media, shops and sponsors, and keeps what each led to in `recipe_pages`. A video's links are fetched once. Requests to the same site are at least 1.5 s apart, a busy site gets one retry, and a page that asks for a browser check is left alone.
+- **Plain code:** recipe-scrapers reads each page's schema.org `Recipe` data, in JSON-LD or Microdata. `recipes build` then gives a recipe the page that holds it: in a video with one recipe, the first page with a recipe; in a video with several, the page whose recipe name, or the words beside its link, best match the recipe's name. A page with no recipe data is still kept as the place to look when its link says it's the recipe.
 
 **4. Details from text**
 For recipes still without details:
