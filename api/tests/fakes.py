@@ -133,3 +133,30 @@ class FakeWeb:
     def fetch_all(self, urls: list[str]) -> list[Page]:
         with self.fetcher() as fetcher:
             return [fetcher.fetch(url) for url in urls]
+
+
+# The fixture videos' links that lead to recipe pages, and the pages in `pages/`.
+RECIPE_PAGES = {
+    "https://goodfoodbaddie.com/blueberry-baked-oatmeal/": (
+        "blueberry_baked_oatmeal.html"
+    ),
+    "https://makeitdairyfree.com/one-pot-west-african-peanut-stew-vegan/": (
+        "west_african_peanut_stew.html"
+    ),
+    "https://www.theedgyveg.com/2023/04/24/3-ingredient-vegan-brownies/": (
+        "vegan_brownies.html"
+    ),
+}
+
+
+def recipe_web() -> FakeWeb:
+    """A web with only the fixture videos' three recipe pages. Every other link is a
+    404."""
+    return FakeWeb(
+        {
+            url: httpx2.Response(
+                200, headers={"content-type": "text/html"}, text=read_page(name)
+            )
+            for url, name in RECIPE_PAGES.items()
+        }
+    )

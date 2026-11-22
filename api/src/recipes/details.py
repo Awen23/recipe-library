@@ -14,14 +14,21 @@ from recipes.ai import DetailsAnswer, LinkText
 from recipes.pages import NO_RECIPE, RECIPE
 from recipes.storage import Details, StoredPage, VideoToFill
 
-# A line that starts with an amount, like "2 tbsp soy sauce" or "½ cup oats", or an
-# "Ingredients" heading, but not a timestamp like "1:42 Breakfasts". A video needs a
-# few before its text is worth reading.
-_INGREDIENT_LINE = re.compile(
-    r"^\W*(?!\d{1,2}:\d{2})(?:\d|[½¼¾⅓⅔⅛]|a (?:pinch|handful)|ingredients)",
+# What makes a video's text worth Claude reading: an ingredients heading (English,
+# Swedish or German), or a few amounts. An amount starts a line, like "2 tomatoes"
+# (but not a timestamp like "1:42 Breakfasts"), or has a unit, anywhere in a
+# sentence, like "chop 100g of cherry tomatoes".
+_INGREDIENTS_HEADING = re.compile(r"ingredien|zutaten", re.IGNORECASE)
+_LINE_AMOUNT = re.compile(
+    r"^\W*(?!\d{1,2}:\d{2})(?:\d|[½¼¾⅓⅔⅛]|a (?:pinch|handful))",
     re.IGNORECASE | re.MULTILINE,
 )
-MIN_INGREDIENT_LINES = 3
+_UNIT_AMOUNT = re.compile(
+    r"(?:\d|[½¼¾⅓⅔⅛])\s*(?:g|kg|ml|l|dl|tbsp|tsp|cups?|oz|lbs?|tablespoons?"
+    r"|teaspoons?)\b",
+    re.IGNORECASE,
+)
+MIN_AMOUNTS = 3
 _LINK = re.compile(r"https?://[^\s)]+")
 # A bullet or emoji, or a step's number like "1." or "2)", which Claude is told to
 # leave out.
@@ -45,7 +52,7 @@ def plain_details(video: VideoToFill) -> dict[int, Details] | None:
                         method=page.recipe.method,
                     )
                 }
-    if not readable_pages(video) and not _has_ingredient_lines(video):
+    if not readable_pages(video) and not _mentions_ingredients(video):
         return {recipe.id: Details(by="code") for recipe in video.recipes}
     return None
 
@@ -62,9 +69,13 @@ def links_for_claude(pages: Sequence[StoredPage]) -> list[LinkText]:
     ]
 
 
-def _has_ingredient_lines(video: VideoToFill) -> bool:
+def _mentions_ingredients(video: VideoToFill) -> bool:
     text = "\n".join([video.text.description, *video.text.creator_comments])
-    return len(_INGREDIENT_LINE.findall(text)) >= MIN_INGREDIENT_LINES
+    return bool(
+        _INGREDIENTS_HEADING.search(text)
+        or len(_LINE_AMOUNT.findall(text)) >= MIN_AMOUNTS
+        or len(_UNIT_AMOUNT.findall(text)) >= MIN_AMOUNTS
+    )
 
 
 def from_answer(

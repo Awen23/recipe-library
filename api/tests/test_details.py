@@ -11,20 +11,8 @@ from recipes.details import copied_lines, from_answer, plain_details, readable_p
 from recipes.fetching import fetch_linked_pages
 from recipes.storage import Details, recipes, videos_to_fill
 
-from fakes import FakeClaudeApi, FakeWeb, read_fixture, read_page, recorded_details
+from fakes import FakeClaudeApi, read_fixture, recipe_web, recorded_details
 
-# The fixture videos' links that lead to recipe pages, and the trimmed pages.
-PAGES = {
-    "https://goodfoodbaddie.com/blueberry-baked-oatmeal/": (
-        "blueberry_baked_oatmeal.html"
-    ),
-    "https://makeitdairyfree.com/one-pot-west-african-peanut-stew-vegan/": (
-        "west_african_peanut_stew.html"
-    ),
-    "https://www.theedgyveg.com/2023/04/24/3-ingredient-vegan-brownies/": (
-        "vegan_brownies.html"
-    ),
-}
 OATMEAL_ID = "gOxwhuntyMY"  # one recipe, with a link to its page
 SIX_MEALS_ID = "nHr9LqK3PKc"  # six recipes: one on a linked page, five in the text
 SEITAN_ID = "eG0tXlljTtI"  # its description is trimmed, so it has nothing to read
@@ -39,14 +27,7 @@ def fake_claude() -> FakeClaudeApi:
 def built(fetched: Engine, fake_claude: FakeClaudeApi) -> Engine:
     """The fixture videos split into recipes, with their links fetched from a web
     that has only the three recipe pages."""
-    web = FakeWeb(
-        {
-            url: httpx2.Response(
-                200, headers={"content-type": "text/html"}, text=read_page(name)
-            )
-            for url, name in PAGES.items()
-        }
-    )
+    web = recipe_web()
     with web.fetcher() as fetcher:
         fetch_linked_pages(fetched, fetcher)
     with Claude("test-key", transport=fake_claude.transport) as claude:
@@ -227,10 +208,11 @@ def test_a_refusal_marks_every_recipe_as_looked_at(
     assert any(r["details_by"] == "ai" and r["source"] is None for r in looked_at)
 
 
-def test_an_answer_with_numbers_out_of_range_finds_nothing(
+def test_an_answer_with_recipe_numbers_it_was_not_shown_finds_nothing(
     built: Engine,
 ) -> None:
-    """Not from the data: Claude's real answer, with its numbers broken on purpose."""
+    """Not from the data: Claude's real answer, with every recipe number moved past
+    the recipes it was shown, as a malformed answer could be."""
     [video] = [v for v in videos_to_fill(built) if v.id == SIX_MEALS_ID]
     answer = recorded_details(SIX_MEALS_ID)
     for item in answer.recipes:
@@ -241,8 +223,9 @@ def test_an_answer_with_numbers_out_of_range_finds_nothing(
     assert {d.source for d in found.values()} == {None}
 
 
-def test_a_link_number_out_of_range_finds_nothing(built: Engine) -> None:
-    """Not from the data: Claude's real answer, with its link number broken."""
+def test_a_link_number_it_was_not_shown_finds_nothing(built: Engine) -> None:
+    """Not from the data: Claude's real answer, with a link number one past the
+    links it was shown, as a malformed answer could be."""
     [video] = [v for v in videos_to_fill(built) if v.id == SIX_MEALS_ID]
     pages = readable_pages(video)
     answer = recorded_details(SIX_MEALS_ID)
@@ -292,3 +275,24 @@ def test_copied_lines_may_leave_out_symbols_and_split_items(
     line: str, written: str
 ) -> None:
     assert copied_lines([line], written) == [line]
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        # From the descriptions of g2l3HHi2PBM, nYM8SaWvceM and TGA1sXv2BaE.
+        "Start by prepping your veg: Chop and sauté 75g of baby mushrooms and chop "
+        "100g of cherry tomatoes. \nWash a handful of spinach.\nNext make the muffin "
+        "filling:\n Add 1 block of silken tofu, 2 tbsp of nutritional yeast",
+        "Ingredients:\nRice Papers, firm tofu 150g, cabbage 160g, spring onion / "
+        "chives 80g,",
+        "Ingredients:\n\nGrated zucchinis\nDiced cherry tomatoes\nDiced onion",
+    ],
+)
+def test_ingredients_in_sentences_or_under_a_heading_are_worth_asking_about(
+    built: Engine, description: str
+) -> None:
+    [video] = [v for v in videos_to_fill(built) if v.id == SEITAN_ID]
+    text = replace(video.text, description=description)
+
+    assert plain_details(replace(video, text=text)) is None  # Claude is asked

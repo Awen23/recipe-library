@@ -13,7 +13,7 @@ from recipes.playlist import fetch_playlist
 from recipes.storage import PYPROJECT, create_engine, save_playlist
 from recipes.youtube import YouTubeClient
 
-from fakes import FakeWeb, FakeYouTubeApi, read_fixture
+from fakes import FakeWeb, FakeYouTubeApi, read_fixture, recipe_web
 
 
 @pytest.fixture(autouse=True)
@@ -29,7 +29,7 @@ def no_network(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def fake_web() -> FakeWeb:
-    return FakeWeb()
+    return recipe_web()
 
 
 @pytest.fixture

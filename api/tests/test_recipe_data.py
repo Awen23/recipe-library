@@ -45,9 +45,13 @@ def test_reads_a_page_whose_name_differs_from_the_video() -> None:
 
 
 def test_a_page_without_recipe_data() -> None:
-    # Not from the data: a page with no Recipe, like a blog's home page.
+    # Not from the data: a page with no Recipe, like the home page of the blog
+    # whr7iOKRXTA links to.
     with pytest.raises(NoRecipeError):
-        read_recipe("<html><body><h1>Welcome!</h1></body></html>", OATMEAL_URL)
+        read_recipe(
+            "<html><body><h1>Welcome!</h1></body></html>",
+            "https://www.amandaducks.com/",
+        )
 
 
 def test_a_recipe_without_ingredients_is_no_recipe() -> None:

@@ -17,7 +17,7 @@ def isolated(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fake_web: FakeWeb
 ) -> None:
     """Run each test in an empty folder with its own .env, so the real .env and
-    data/ are never touched, and fetch pages from a fake web that has none."""
+    data/ are never touched, and fetch pages from a fake web."""
     monkeypatch.setattr(cli, "PageFetcher", fake_web.fetcher)
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("DATABASE_URL", raising=False)  # set again by `engine`
@@ -43,8 +43,8 @@ def test_fetch_saves_the_playlist(
     output = capsys.readouterr().out
     assert "Saved 5 videos (5 new)" in output
     assert fake_api.requests[0].headers["X-Goog-Api-Key"] == "test-key"
-    # The fake web answers every link with a 404.
-    assert "Fetched 3 links from 3 videos (0 with a recipe)" in output
+    # The fake web has the oatmeal and brownie pages; the bit.ly link is a 404.
+    assert "Fetched 3 links from 3 videos (2 with a recipe)" in output
 
 
 def test_fetch_without_an_api_key_says_how_to_set_one(

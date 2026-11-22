@@ -23,22 +23,23 @@ def test_stores_what_each_link_led_to(fetched: Engine, fake_web: FakeWeb) -> Non
     with fake_web.fetcher() as fetcher:
         summary = fetch_linked_pages(fetched, fetcher)
 
-    # The fake web has no pages, so every link is a 404. eG0tXlljTtI has no links.
-    assert (summary.videos, summary.links, summary.recipes) == (4, 7, 0)
+    # The fake web has the three recipe pages, and every other link is a 404.
+    # eG0tXlljTtI has no links.
+    assert (summary.videos, summary.links, summary.recipes) == (4, 7, 3)
     assert page_rows(fetched)[:3] == [
         (
             "H0tkAEL6CS8",
             0,
             "https://www.theedgyveg.com/2023/04/24/3-ingredient-vegan-brownies/",
             "🌱 Brownie Recipes",
-            "HTTP 404",
+            "recipe",
         ),
         (
             "gOxwhuntyMY",
             0,
             "https://goodfoodbaddie.com/blueberry-baked-oatmeal/",
             "Full Recipe + Nutritional Info",
-            "HTTP 404",
+            "recipe",
         ),
         (
             "nHr9LqK3PKc",
@@ -50,7 +51,11 @@ def test_stores_what_each_link_led_to(fetched: Engine, fake_web: FakeWeb) -> Non
     ]
 
 
-def test_fetching_again_fetches_nothing(fetched: Engine, fake_web: FakeWeb) -> None:
+def test_links_already_fetched_are_not_fetched_again(
+    fetched: Engine, fake_web: FakeWeb
+) -> None:
+    # `recipes fetch` runs whenever the playlist has new videos. Only their links
+    # are fetched: the stored videos' links were fetched the first time.
     with fake_web.fetcher() as fetcher:
         fetch_linked_pages(fetched, fetcher)
         before = len(fake_web.requests)
@@ -91,4 +96,4 @@ def test_a_page_without_a_recipe_stores_null(
 
     with fetched.connect() as connection:
         query = select(video_links.c.url).where(video_links.c.recipe.is_(None))
-        assert len(connection.execute(query).all()) == 7  # SQL NULL, not "null"
+        assert len(connection.execute(query).all()) == 4  # SQL NULL, not "null"
