@@ -210,3 +210,12 @@ def test_text_with_no_line_really_written_there_finds_nothing(built: Engine) -> 
     found = from_answer(video, [], answer)
 
     assert found[video.recipes[1].id].source is None
+
+
+def test_copied_lines_drops_links_in_a_line() -> None:
+    # From the description of irTsXkAuZHg.
+    line = "150 g vital wheat gluten (https://amzn.to/3dZgzsF)"
+
+    assert copied_lines([line], f"Ingredients:\n{line}\n") == [
+        "150 g vital wheat gluten"
+    ]

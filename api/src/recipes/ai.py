@@ -70,7 +70,7 @@ topping) belong to it.
 3. `link` to a page with no recipe data, when its link says it's this recipe's \
 written recipe, or that it holds the written recipes for the whole video.
 4. `none`: nowhere. Links to other videos, shops, sign-ups or the creator's home page \
-don't count.
+don't count, and nor does a page that sells the recipe (an e-book, a paid guide).
 
 - `recipe`: the recipe's number. Answer once for every recipe.
 - `link`: the link's number for `link`, otherwise null.

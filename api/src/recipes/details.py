@@ -20,6 +20,7 @@ _INGREDIENT_LINE = re.compile(
     r"^\W*(?:\d|[½¼¾⅓⅔⅛]|a (?:pinch|handful)|ingredients)", re.IGNORECASE | re.MULTILINE
 )
 MIN_INGREDIENT_LINES = 3
+_LINK = re.compile(r"https?://[^\s)]+")
 
 
 def plain_details(video: VideoToFill) -> dict[int, Details] | None:
@@ -102,9 +103,19 @@ def from_answer(
 
 def copied_lines(lines: Sequence[str], text: str) -> list[str]:
     """The lines that really are in `text`, ignoring case and spacing, so nothing
-    Claude wrote itself is stored as the creator's recipe."""
+    Claude wrote itself is stored as the creator's recipe. Links in a line, often to
+    a shop, are dropped."""
     written = _squash(text)
-    return [line.strip() for line in lines if line.strip() and _squash(line) in written]
+    return [
+        _without_links(line)
+        for line in lines
+        if _without_links(line) and _squash(line) in written
+    ]
+
+
+def _without_links(line: str) -> str:
+    line = _LINK.sub("", line)
+    return re.sub(r"\(\s*\)", "", line).strip()  # and the brackets a link was in
 
 
 def _squash(text: str) -> str:
