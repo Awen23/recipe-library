@@ -87,7 +87,7 @@ def _build(_args: argparse.Namespace) -> int:
     try:
         with Claude(api_key) as claude:
             summary = build_recipes(engine, claude)
-            details = fill_details(engine, claude)
+            details_failed = fill_details(engine, claude)
     except AIKeyError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -96,11 +96,7 @@ def _build(_args: argparse.Namespace) -> int:
         f"Built {summary.recipes} recipes from {summary.videos} new videos "
         f"({summary.input_tokens} input and {summary.output_tokens} output tokens)."
     )
-    print(
-        f"Found ingredients for {details.found} recipes "
-        f"({details.input_tokens} input and {details.output_tokens} output tokens)."
-    )
-    failed = summary.failed | details.failed
+    failed = summary.failed | details_failed
     for video_id, reason in failed.items():
         print(
             f"error: {video_id}: {reason}. Run `recipes build` again.", file=sys.stderr

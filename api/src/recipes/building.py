@@ -51,21 +51,12 @@ def build_recipes(engine: Engine, claude: Claude) -> BuildSummary:
     return summary
 
 
-@dataclass
-class DetailsSummary:
-    """What looking for recipes' written recipes did, for the command line to say."""
-
-    found: int = 0  # recipes given ingredients
-    failed: dict[str, str] = field(default_factory=dict)  # video ID: why
-    input_tokens: int = 0
-    output_tokens: int = 0
-
-
-def fill_details(engine: Engine, claude: Claude) -> DetailsSummary:
+def fill_details(engine: Engine, claude: Claude) -> dict[str, str]:
     """Look for the written recipe of each recipe that hasn't been looked at, and
-    store what's found, video by video. A video Claude can't answer about is left
-    for the next build. A rejected API key stops the build."""
-    summary = DetailsSummary()
+    store what's found, video by video. Returns the videos Claude couldn't answer
+    about, by ID, with why: they're left for the next build. A rejected API key stops
+    the build."""
+    failed: dict[str, str] = {}
     # A video with links waits until they've been fetched.
     unfetched = {video_id for video_id, _ in storage.videos_to_fetch_pages(engine)}
     for video in storage.videos_to_fill(engine):
@@ -80,11 +71,8 @@ def fill_details(engine: Engine, claude: Claude) -> DetailsSummary:
             except AIKeyError:
                 raise
             except AIError as error:
-                summary.failed[video.id] = str(error)
+                failed[video.id] = str(error)
                 continue
             found = from_answer(video, pages, reply.answer)
-            summary.input_tokens += reply.input_tokens
-            summary.output_tokens += reply.output_tokens
         storage.save_details(engine, found)
-        summary.found += sum(d.ingredients is not None for d in found.values())
-    return summary
+    return failed

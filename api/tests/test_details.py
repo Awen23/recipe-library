@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy import Engine, select, update
 
 from recipes.ai import Claude
-from recipes.building import DetailsSummary, build_recipes, fill_details
+from recipes.building import build_recipes, fill_details
 from recipes.details import copied_lines, from_answer, plain_details, readable_pages
 from recipes.fetching import fetch_linked_pages
 from recipes.models import Details
@@ -36,7 +36,7 @@ def built(fetched: Engine, fake_claude: FakeClaudeApi) -> Engine:
     return fetched
 
 
-def fill(engine: Engine, fake_claude: FakeClaudeApi) -> DetailsSummary:
+def fill(engine: Engine, fake_claude: FakeClaudeApi) -> dict[str, str]:
     with Claude("test-key", transport=fake_claude.transport) as claude:
         return fill_details(engine, claude)
 
@@ -71,11 +71,11 @@ def test_claude_is_asked_only_about_videos_plain_code_cant_settle(
 ) -> None:
     before = len(fake_claude.requests)
 
-    summary = fill(built, fake_claude)
+    failed = fill(built, fake_claude)
 
     # The meal prep and six-meal videos. The oatmeal and brownies have one recipe
     # and a recipe page, and the seitan video has nothing to read.
-    assert summary.failed == {}
+    assert failed == {}
     assert len(fake_claude.requests) - before == 2
 
 
@@ -117,7 +117,7 @@ def test_looking_again_asks_nothing_and_changes_nothing(
         )
     before = len(fake_claude.requests)
 
-    assert fill(built, fake_claude).found == 0
+    fill(built, fake_claude)
     assert len(fake_claude.requests) == before
     assert details(built, OATMEAL_ID)[0]["ingredients"] == ["3 cups oats"]
 
@@ -129,9 +129,9 @@ def test_a_video_claude_couldnt_answer_about_is_left_for_the_next_build(
     error = {"type": "error", "error": {"type": "overloaded_error", "message": "x"}}
     fake_claude.queue.append(httpx2.Response(400, json=error))
 
-    summary = fill(built, fake_claude)
+    failed = fill(built, fake_claude)
 
-    assert len(summary.failed) == 1
+    assert len(failed) == 1
     before = len(fake_claude.requests)
     fill(built, fake_claude)
     assert len(fake_claude.requests) - before == 1
@@ -205,9 +205,9 @@ def test_a_refusal_marks_every_recipe_as_looked_at(
     }
     fake_claude.queue.append(httpx2.Response(200, json=refusal))
 
-    summary = fill(built, fake_claude)
+    failed = fill(built, fake_claude)
 
-    assert summary.failed == {}
+    assert failed == {}
     looked_at = [r for v in (SIX_MEALS_ID, "whr7iOKRXTA") for r in details(built, v)]
     # The first video asked about was refused, so its recipes have nothing.
     assert any(r["details_by"] == "ai" and r["source"] is None for r in looked_at)
