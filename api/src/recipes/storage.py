@@ -124,8 +124,8 @@ creator_comments = Table(
 # One row per link in a video's description or creator comments that may lead to a
 # written recipe (`links.find_links`), with what fetching it found. A video's links
 # are fetched once.
-recipe_pages = Table(
-    "recipe_pages",
+video_links = Table(
+    "video_links",
     metadata,
     Column("video_id", String, ForeignKey("videos.id"), primary_key=True),
     Column("url", String, primary_key=True),  # as written in the video
@@ -370,7 +370,7 @@ def videos_to_fetch_pages(engine: Engine) -> list[tuple[str, list[Link]]]:
             select(videos.c.id, videos.c.description)
             .where(
                 videos.c.removed_at.is_(None),
-                videos.c.id.not_in(select(recipe_pages.c.video_id)),
+                videos.c.id.not_in(select(video_links.c.video_id)),
             )
             .order_by(videos.c.first_seen_at, videos.c.id)
         ).all()
@@ -398,7 +398,7 @@ def save_pages(
     with engine.begin() as connection:
         _insert(
             connection,
-            recipe_pages,
+            video_links,
             [
                 {
                     "video_id": video_id,
@@ -468,9 +468,9 @@ def videos_to_fill(engine: Engine) -> list[VideoToFill]:
                 .order_by(recipes.c.position)
             ).all()
             pages = connection.execute(
-                select(recipe_pages)
-                .where(recipe_pages.c.video_id == video_id)
-                .order_by(recipe_pages.c.position)
+                select(video_links)
+                .where(video_links.c.video_id == video_id)
+                .order_by(video_links.c.position)
             ).all()
             result.append(
                 VideoToFill(
