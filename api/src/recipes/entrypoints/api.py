@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine
 
 from recipes import storage
-from recipes.models import Marks, Rating
+from recipes.models import Interest, Marks, Verdict
 
 
 class State(TypedDict):
@@ -61,23 +61,25 @@ DatabaseEngine = Annotated[Engine, Depends(get_engine)]
 # in `models`, so the API's shape only changes on purpose.
 
 
-class RatingBody(BaseModel):
-    rating: Rating | None  # null clears the rating
+class InterestBody(BaseModel):
+    interest: Interest | None  # null clears it
 
 
-class HiddenBody(BaseModel):
-    hidden: bool
+class VerdictBody(BaseModel):
+    verdict: Verdict | None  # null clears it
 
 
 class MarksResponse(BaseModel):
-    rating: Rating | None
-    hidden: bool
+    interest: Interest | None
+    verdict: Verdict | None
     updated_at: datetime  # UTC
 
     @classmethod
     def of(cls, marks: Marks) -> MarksResponse:
         return cls(
-            rating=marks.rating, hidden=marks.hidden, updated_at=marks.updated_at
+            interest=marks.interest,
+            verdict=marks.verdict,
+            updated_at=marks.updated_at,
         )
 
 
@@ -86,20 +88,22 @@ NOT_FOUND: dict[int | str, dict[str, Any]] = {
 }
 
 
-@app.put("/recipes/{recipe_id}/rating", responses=NOT_FOUND)
-def rate_recipe(
-    recipe_id: int, body: RatingBody, engine: DatabaseEngine
+@app.put("/recipes/{recipe_id}/interest", responses=NOT_FOUND)
+def set_interest(
+    recipe_id: int, body: InterestBody, engine: DatabaseEngine
 ) -> MarksResponse:
-    """Set how interested I am in a recipe, or clear it with null."""
-    return MarksResponse.of(storage.rate_recipe(engine, recipe_id, body.rating))
+    """Set how interested I am in a recipe before cooking it, or clear it with
+    null. "not_for_me" hides it from the library."""
+    return MarksResponse.of(storage.set_interest(engine, recipe_id, body.interest))
 
 
-@app.put("/recipes/{recipe_id}/hidden", responses=NOT_FOUND)
-def hide_recipe(
-    recipe_id: int, body: HiddenBody, engine: DatabaseEngine
+@app.put("/recipes/{recipe_id}/verdict", responses=NOT_FOUND)
+def set_verdict(
+    recipe_id: int, body: VerdictBody, engine: DatabaseEngine
 ) -> MarksResponse:
-    """Hide a recipe from the library, or show it again."""
-    return MarksResponse.of(storage.hide_recipe(engine, recipe_id, body.hidden))
+    """Set how often I'd cook a recipe again after cooking it, or clear it with
+    null."""
+    return MarksResponse.of(storage.set_verdict(engine, recipe_id, body.verdict))
 
 
 @app.exception_handler(storage.NoSuchRecipeError)

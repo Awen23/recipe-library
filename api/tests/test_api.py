@@ -27,72 +27,77 @@ def recipe_id(engine: Engine, name: str) -> int:
     return found
 
 
-def test_rating_a_recipe_answers_with_its_marks(
+def test_setting_interest_answers_with_the_marks(
     client: TestClient, split: Engine
 ) -> None:
     oats = recipe_id(split, "Overnight oats")
 
-    response = client.put(f"/recipes/{oats}/rating", json={"rating": "would_cook"})
+    response = client.put(f"/recipes/{oats}/interest", json={"interest": "curious"})
 
     assert response.status_code == 200
     body = response.json()
-    assert (body["rating"], body["hidden"]) == ("would_cook", False)
+    assert (body["interest"], body["verdict"]) == ("curious", None)
 
 
-def test_a_rating_can_be_cleared_with_null(client: TestClient, split: Engine) -> None:
+def test_interest_can_be_cleared_with_null(client: TestClient, split: Engine) -> None:
     oats = recipe_id(split, "Overnight oats")
-    client.put(f"/recipes/{oats}/rating", json={"rating": "curious"})
+    client.put(f"/recipes/{oats}/interest", json={"interest": "not_for_me"})
 
-    response = client.put(f"/recipes/{oats}/rating", json={"rating": None})
+    response = client.put(f"/recipes/{oats}/interest", json={"interest": None})
 
-    assert response.json()["rating"] is None
+    assert response.json()["interest"] is None
 
 
-def test_hiding_a_recipe_keeps_its_rating(client: TestClient, split: Engine) -> None:
+def test_a_verdict_keeps_the_interest(client: TestClient, split: Engine) -> None:
     bars = recipe_id(split, "Raspberry oat bars")
-    client.put(f"/recipes/{bars}/rating", json={"rating": "curious"})
+    client.put(f"/recipes/{bars}/interest", json={"interest": "want_to_cook"})
 
-    response = client.put(f"/recipes/{bars}/hidden", json={"hidden": True})
+    response = client.put(f"/recipes/{bars}/verdict", json={"verdict": "regularly"})
 
     body = response.json()
-    assert (body["rating"], body["hidden"]) == ("curious", True)
+    assert (body["interest"], body["verdict"]) == ("want_to_cook", "regularly")
 
 
-def test_a_hidden_recipe_can_be_shown_again(client: TestClient, split: Engine) -> None:
+def test_a_verdict_can_be_cleared_with_null(client: TestClient, split: Engine) -> None:
     bars = recipe_id(split, "Raspberry oat bars")
-    client.put(f"/recipes/{bars}/hidden", json={"hidden": True})
+    client.put(f"/recipes/{bars}/verdict", json={"verdict": "not_again"})
 
-    response = client.put(f"/recipes/{bars}/hidden", json={"hidden": False})
+    response = client.put(f"/recipes/{bars}/verdict", json={"verdict": None})
 
-    assert response.json()["hidden"] is False
+    assert response.json()["verdict"] is None
 
 
-def test_a_rating_that_isnt_a_level_is_refused(
-    client: TestClient, split: Engine
+@pytest.mark.parametrize(
+    ("mark", "body"),
+    [("interest", {"interest": "5 stars"}), ("verdict", {"verdict": "loved it"})],
+    ids=str,
+)
+def test_a_mark_that_isnt_one_of_its_levels_is_refused(
+    client: TestClient, split: Engine, mark: str, body: dict[str, str]
 ) -> None:
-    """Not from the data: a made-up rating."""
+    """Not from the data: made-up levels."""
     oats = recipe_id(split, "Overnight oats")
 
-    response = client.put(f"/recipes/{oats}/rating", json={"rating": "5 stars"})
+    response = client.put(f"/recipes/{oats}/{mark}", json=body)
 
     assert response.status_code == 422
 
 
-def test_a_rating_must_be_given_even_to_clear_it(
+def test_a_mark_must_be_given_even_to_clear_it(
     client: TestClient, split: Engine
 ) -> None:
     """Not from the data: a body without its field, so a typo can't clear a
-    rating."""
+    mark."""
     oats = recipe_id(split, "Overnight oats")
 
-    response = client.put(f"/recipes/{oats}/rating", json={"ratnig": "curious"})
+    response = client.put(f"/recipes/{oats}/interest", json={"intrest": "curious"})
 
     assert response.status_code == 422
 
 
 def test_marking_a_recipe_that_isnt_stored_is_not_found(client: TestClient) -> None:
     """Not from the data: an ID no recipe has."""
-    response = client.put("/recipes/9999/hidden", json={"hidden": True})
+    response = client.put("/recipes/9999/verdict", json={"verdict": "regularly"})
 
     assert response.status_code == 404
     assert response.json() == {"detail": "No recipe has the ID 9999."}

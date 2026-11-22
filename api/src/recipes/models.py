@@ -10,16 +10,20 @@ from typing import Literal
 from recipes.ai import VideoText
 from recipes.recipe_data import PageRecipe
 
-# How interested I am in a recipe, as I rate it by hand.
-Rating = Literal["would_cook", "curious", "not_for_me"]
+# How interested I am in a recipe before I've cooked it. "Not for me" hides it from
+# the library.
+Interest = Literal["want_to_cook", "curious", "not_for_me"]
+
+# What I thought after cooking a recipe: how often I'd make it again.
+Verdict = Literal["regularly", "once_in_a_while", "special_occasion", "not_again"]
 
 
 @dataclass(frozen=True)
 class Marks:
     """A recipe's marks, as I set them by hand. `updated_at` is UTC."""
 
-    rating: Rating | None
-    hidden: bool
+    interest: Interest | None
+    verdict: Verdict | None
     updated_at: datetime
 
 

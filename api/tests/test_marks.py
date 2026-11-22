@@ -1,4 +1,5 @@
-"""Rating and hiding recipes: the marks I set by hand, in `recipe_marks`."""
+"""The marks I set by hand on recipes, in `recipe_marks`: my interest before cooking
+one, and my verdict after."""
 
 from datetime import datetime
 from typing import Any
@@ -9,17 +10,17 @@ from sqlalchemy.exc import IntegrityError
 
 from recipes.ai import Claude
 from recipes.building import build_recipes, fill_details
+from recipes.models import Marks
 from recipes.storage import (
     NoSuchRecipeError,
-    hide_recipe,
-    rate_recipe,
     recipe_marks,
     recipes,
+    set_interest,
+    set_verdict,
 )
 
 from fakes import FakeClaudeApi
 
-MEAL_PREP_ID = "whr7iOKRXTA"  # a meal prep video with five recipes
 MONDAY = datetime(2026, 11, 23, 18, 0)
 TUESDAY = datetime(2026, 11, 24, 18, 0)
 
@@ -38,67 +39,74 @@ def marks(engine: Engine) -> dict[int, dict[str, Any]]:
         return {row["recipe_id"]: dict(row) for row in rows}
 
 
-def test_rating_a_recipe_stores_the_rating(split: Engine) -> None:
+def test_setting_interest_stores_it(split: Engine) -> None:
     oats = recipe_id(split, "Overnight oats")
 
-    rate_recipe(split, oats, "would_cook", now=MONDAY)
+    set_interest(split, oats, "want_to_cook", now=MONDAY)
 
     assert marks(split) == {
         oats: {
             "recipe_id": oats,
-            "rating": "would_cook",
-            "hidden": False,
+            "interest": "want_to_cook",
+            "verdict": None,
             "updated_at": MONDAY,
         }
     }
 
 
-def test_rating_again_changes_the_rating(split: Engine) -> None:
+def test_setting_interest_answers_with_the_marks(split: Engine) -> None:
     oats = recipe_id(split, "Overnight oats")
-    rate_recipe(split, oats, "would_cook", now=MONDAY)
 
-    rate_recipe(split, oats, "curious", now=TUESDAY)
+    found = set_interest(split, oats, "curious", now=MONDAY)
 
-    assert (marks(split)[oats]["rating"], marks(split)[oats]["updated_at"]) == (
-        "curious",
+    assert found == Marks(interest="curious", verdict=None, updated_at=MONDAY)
+
+
+def test_setting_interest_again_changes_it(split: Engine) -> None:
+    oats = recipe_id(split, "Overnight oats")
+    set_interest(split, oats, "want_to_cook", now=MONDAY)
+
+    set_interest(split, oats, "not_for_me", now=TUESDAY)
+
+    assert (marks(split)[oats]["interest"], marks(split)[oats]["updated_at"]) == (
+        "not_for_me",
         TUESDAY,
     )
 
 
-def test_a_rating_can_be_cleared(split: Engine) -> None:
+def test_interest_can_be_cleared(split: Engine) -> None:
     oats = recipe_id(split, "Overnight oats")
-    rate_recipe(split, oats, "not_for_me")
+    set_interest(split, oats, "curious")
 
-    rate_recipe(split, oats, None)
+    set_interest(split, oats, None)
 
-    assert marks(split)[oats]["rating"] is None
+    assert marks(split)[oats]["interest"] is None
 
 
-def test_hiding_a_recipe_keeps_its_rating(split: Engine) -> None:
+def test_a_verdict_keeps_the_interest(split: Engine) -> None:
     bars = recipe_id(split, "Raspberry oat bars")
-    rate_recipe(split, bars, "curious")
+    set_interest(split, bars, "want_to_cook")
 
-    hide_recipe(split, bars)
+    set_verdict(split, bars, "special_occasion")
 
-    assert (marks(split)[bars]["rating"], marks(split)[bars]["hidden"]) == (
-        "curious",
-        True,
+    assert (marks(split)[bars]["interest"], marks(split)[bars]["verdict"]) == (
+        "want_to_cook",
+        "special_occasion",
     )
 
 
-def test_a_hidden_recipe_can_be_shown_again(split: Engine) -> None:
+def test_a_verdict_can_be_cleared(split: Engine) -> None:
     bars = recipe_id(split, "Raspberry oat bars")
-    hide_recipe(split, bars)
+    set_verdict(split, bars, "not_again")
 
-    hide_recipe(split, bars, hidden=False)
+    set_verdict(split, bars, None)
 
-    assert marks(split)[bars]["hidden"] is False
+    assert marks(split)[bars]["verdict"] is None
 
 
 def test_marking_one_recipe_leaves_the_others_unmarked(split: Engine) -> None:
-    # The meal prep video's other four recipes have no row, so they're unrated and
-    # shown.
-    hide_recipe(split, recipe_id(split, "Hearty vegan lasagne"))
+    # The meal prep video's other four recipes have no row, so they have no marks.
+    set_verdict(split, recipe_id(split, "Hearty vegan lasagne"), "regularly")
 
     assert len(marks(split)) == 1
 
@@ -106,15 +114,15 @@ def test_marking_one_recipe_leaves_the_others_unmarked(split: Engine) -> None:
 def test_a_recipe_that_isnt_stored_cant_be_marked(split: Engine) -> None:
     """Not from the data: an ID no recipe has."""
     with pytest.raises(NoSuchRecipeError):
-        rate_recipe(split, 9999, "would_cook")
+        set_interest(split, 9999, "want_to_cook")
 
     assert marks(split) == {}
 
 
 def test_marks_survive_building_again(split: Engine) -> None:
     oats = recipe_id(split, "Overnight oats")
-    rate_recipe(split, oats, "would_cook", now=MONDAY)
-    hide_recipe(split, oats, now=MONDAY)
+    set_interest(split, oats, "want_to_cook", now=MONDAY)
+    set_verdict(split, oats, "regularly", now=MONDAY)
     before = marks(split)
 
     # The same steps as `recipes build`: recipes, then their details.
@@ -125,10 +133,16 @@ def test_marks_survive_building_again(split: Engine) -> None:
     assert marks(split) == before
 
 
-def test_a_rating_must_be_one_of_the_levels(split: Engine) -> None:
-    """Not from the data: checks the rule in the table, with a made-up rating."""
+@pytest.mark.parametrize(
+    "mark", [{"interest": "5 stars"}, {"verdict": "loved it"}], ids=str
+)
+def test_each_mark_must_be_one_of_its_levels(
+    split: Engine, mark: dict[str, str]
+) -> None:
+    """Not from the data: checks the rules in the table, with made-up levels."""
     oats = recipe_id(split, "Overnight oats")
-    row = {"recipe_id": oats, "rating": "5 stars", "hidden": False}
 
     with split.begin() as connection, pytest.raises(IntegrityError):
-        connection.execute(insert(recipe_marks).values(**row, updated_at=MONDAY))
+        connection.execute(
+            insert(recipe_marks).values(recipe_id=oats, updated_at=MONDAY, **mark)
+        )

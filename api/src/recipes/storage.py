@@ -43,11 +43,12 @@ from recipes.chapters import Chapter, parse_chapters
 from recipes.links import Link, find_links
 from recipes.models import (
     Details,
+    Interest,
     Line,
     Marks,
-    Rating,
     RecipeName,
     StoredPage,
+    Verdict,
     VideoToFill,
 )
 from recipes.pages import Page
@@ -207,20 +208,25 @@ recipes = Table(
     sqlite_autoincrement=True,  # what keeps `id`s from being reused
 )
 
-# How interested I am in a recipe.
-RATINGS = get_args(Rating)
+# The levels of each mark, from the types in `models`.
+INTERESTS = get_args(Interest)
+VERDICTS = get_args(Verdict)
 
-# My own marks on recipes, set by hand: one row per recipe I've rated or hidden.
-# Building never reads or writes this table, so the marks survive it. A recipe with
-# no row is unrated and shown.
+# My own marks on recipes, set by hand: one row per recipe I've marked. Building
+# never reads or writes this table, so the marks survive it. A recipe with no row
+# has no marks, and is shown.
 recipe_marks = Table(
     "recipe_marks",
     metadata,
     Column("recipe_id", Integer, ForeignKey("recipes.id"), primary_key=True),
-    Column("rating", String, nullable=True),  # one of RATINGS, or null for unrated
-    Column("hidden", Boolean, nullable=False),
+    # Before cooking it: one of INTERESTS, or null if I haven't decided.
+    # "not_for_me" hides the recipe.
+    Column("interest", String, nullable=True),
+    # After cooking it: one of VERDICTS, or null if I haven't cooked it.
+    Column("verdict", String, nullable=True),
     Column("updated_at", DateTime, nullable=False),
-    _one_of("rating", RATINGS),
+    _one_of("interest", INTERESTS),
+    _one_of("verdict", VERDICTS),
 )
 
 
@@ -514,24 +520,28 @@ class NoSuchRecipeError(LookupError):
     """There's no recipe with this ID."""
 
 
-def rate_recipe(
+def set_interest(
     engine: Engine,
     recipe_id: int,
-    rating: Rating | None,
+    interest: Interest | None,
     *,
     now: datetime | None = None,
 ) -> Marks:
     """Set how interested I am in a recipe, or clear it with None. Returns its
     marks."""
-    return _mark(engine, recipe_id, {"rating": rating}, now or _utc_now())
+    return _mark(engine, recipe_id, {"interest": interest}, now or _utc_now())
 
 
-def hide_recipe(
-    engine: Engine, recipe_id: int, hidden: bool = True, *, now: datetime | None = None
+def set_verdict(
+    engine: Engine,
+    recipe_id: int,
+    verdict: Verdict | None,
+    *,
+    now: datetime | None = None,
 ) -> Marks:
-    """Hide a recipe from the library, or show it again with `hidden=False`.
+    """Set what I thought of a recipe after cooking it, or clear it with None.
     Returns its marks."""
-    return _mark(engine, recipe_id, {"hidden": hidden}, now or _utc_now())
+    return _mark(engine, recipe_id, {"verdict": verdict}, now or _utc_now())
 
 
 def _mark(
@@ -547,7 +557,7 @@ def _mark(
         found = connection.scalar(select(recipes.c.id).where(recipes.c.id == recipe_id))
         if found is None:
             raise NoSuchRecipeError(recipe_id)
-        new_row = {"recipe_id": recipe_id, "rating": None, "hidden": False}
+        new_row = {"recipe_id": recipe_id, "interest": None, "verdict": None}
         statement = sqlite_insert(recipe_marks).values(
             {**new_row, **changes, "updated_at": now}
         )
@@ -556,12 +566,12 @@ def _mark(
                 index_elements=[recipe_marks.c.recipe_id],
                 set_={**changes, "updated_at": now},
             ).returning(
-                recipe_marks.c.rating,
-                recipe_marks.c.hidden,
+                recipe_marks.c.interest,
+                recipe_marks.c.verdict,
                 recipe_marks.c.updated_at,
             )
         ).one()
-    return Marks(row.rating, row.hidden, row.updated_at)
+    return Marks(row.interest, row.verdict, row.updated_at)
 
 
 def _lines(lines: Sequence[Line] | None) -> list[dict[str, Any]] | None:

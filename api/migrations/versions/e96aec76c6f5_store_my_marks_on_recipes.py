@@ -1,4 +1,4 @@
-"""store my ratings and hidden recipes
+"""store my marks on recipes
 
 Revision ID: e96aec76c6f5
 Revises: 7d933c1749e1
@@ -21,12 +21,17 @@ def upgrade() -> None:
     op.create_table(
         "recipe_marks",
         sa.Column("recipe_id", sa.Integer(), nullable=False),
-        sa.Column("rating", sa.String(), nullable=True),
-        sa.Column("hidden", sa.Boolean(), nullable=False),
+        sa.Column("interest", sa.String(), nullable=True),
+        sa.Column("verdict", sa.String(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.CheckConstraint(
-            "rating IN ('would_cook', 'curious', 'not_for_me')",
-            name=op.f("ck_recipe_marks_rating"),
+            "interest IN ('want_to_cook', 'curious', 'not_for_me')",
+            name=op.f("ck_recipe_marks_interest"),
+        ),
+        sa.CheckConstraint(
+            "verdict IN ('regularly', 'once_in_a_while', 'special_occasion', "
+            "'not_again')",
+            name=op.f("ck_recipe_marks_verdict"),
         ),
         sa.ForeignKeyConstraint(
             ["recipe_id"],
