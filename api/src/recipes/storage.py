@@ -1,5 +1,5 @@
-"""Where fetched videos, Claude's answers and recipes are kept. All database access
-goes through this module.
+"""Where fetched videos and pages, and the recipes worked out from them, are kept.
+All database access goes through this module.
 
 The database is SQLite, at `data/recipes.db` unless `DATABASE_URL` says otherwise.
 Its tables are created by the migrations in `migrations/`: run `alembic upgrade head`.
@@ -17,6 +17,7 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Column,
@@ -113,6 +114,24 @@ creator_comments = Table(
     Column("published_at", DateTime, nullable=False),
 )
 
+# One row per link in a video's description or creator comments that may lead to a
+# written recipe (`links.find_links`), with what fetching it found. A video's links
+# are fetched once.
+recipe_pages = Table(
+    "recipe_pages",
+    metadata,
+    Column("video_id", String, ForeignKey("videos.id"), primary_key=True),
+    Column("url", String, primary_key=True),  # as written in the video
+    Column("position", Integer, nullable=False),  # 0, 1, 2… in the order written
+    Column("link_text", String, nullable=False),  # the words on the link's line
+    Column("final_url", String, nullable=True),  # after redirects, if it answered
+    Column("fetched_at", DateTime, nullable=False),
+    Column("outcome", String, nullable=False),  # see `pages`, such as "recipe"
+    # The page's first recipe, {"name", "ingredients", "method"}, when it has one.
+    # Not the page itself, which is the site's own writing.
+    Column("recipe", JSON, nullable=True),
+)
+
 
 # Who set a group of recipe fields: plain code, AI, or a correction by hand.
 SET_BY = ("code", "ai", "hand")
@@ -143,12 +162,22 @@ recipes = Table(
     # Where the recipe starts in the video. Null when it isn't known.
     Column("start_seconds", Integer, nullable=True),
     Column("start_by", String, nullable=False),
+    # The written recipe, and where it came from. All null until a build finds one,
+    # and a build only fills them while `source` is null.
+    Column("ingredients", JSON, nullable=True),  # list of lines, such as "1 cup oats"
+    Column("method", JSON, nullable=True),  # list of steps
+    Column("source", String, nullable=True),  # where it was found: "link"
+    Column("source_url", String, nullable=True),  # the page, when it's from a link
+    Column("details_by", String, nullable=True),
+    Column("details_confidence", Integer, nullable=True),  # 0-100, how sure
     UniqueConstraint("video_id", "position"),
     ForeignKeyConstraint(
         ["video_id", "chapter_position"], ["chapters.video_id", "chapters.position"]
     ),
     _set_by("name_by"),
     _set_by("start_by"),
+    _set_by("details_by"),
+    CheckConstraint("source IN ('link')", name="source"),
     sqlite_autoincrement=True,  # what keeps `id`s from being reused
 )
 
