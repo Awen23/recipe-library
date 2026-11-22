@@ -27,6 +27,7 @@ Ideas deferred while we focus on the current phase. Added to as we discuss and d
 - **Links that failed** (a timeout, a busy site) are fetched once and not tried again.
 - **Searchable ingredient names**, such as "leeks" from "1-2 leeks, chopped or a few handfuls spinach", for the UI's search. Ingredient lines are kept as written for now.
 - **A dish made to go inside another** (meatballs for a meatball sub) is sometimes listed as two recipes. Splitting could merge them.
+- **Recipe pages laid out as tables** (javligtgott.se, 2 pages): the name and amount are in separate cells, so most lines are lost when the page's text is read. Keeping each table row on one line would fix it.
 - **Links to other videos** (YouTube, TikTok, Instagram): some creators link the video a recipe was shown in. That video's description could be read for the ingredients.
 - **Addresses behind hostnames:** links to this computer or to private IP addresses are refused, but a hostname that resolves to one isn't checked yet. Add it before the app is hosted.
 - **Other people's playlists:** sign in with Google (`youtube.readonly` scope, which needs Google's app verification for a public launch). Before anyone else uses the app, move from SQLite to Postgres.
