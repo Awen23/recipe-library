@@ -19,8 +19,8 @@ Verdict = Literal["regularly", "once_in_a_while", "special_occasion", "not_again
 
 
 @dataclass(frozen=True)
-class Marks:
-    """A recipe's marks, as I set them by hand. `updated_at` is UTC."""
+class Ratings:
+    """A recipe's ratings, as I set them by hand. `updated_at` is UTC."""
 
     interest: Interest | None
     verdict: Verdict | None

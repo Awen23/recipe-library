@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine
 
 from recipes import storage
-from recipes.models import Interest, Marks, Verdict
+from recipes.models import Interest, Ratings, Verdict
 
 
 class State(TypedDict):
@@ -28,8 +28,16 @@ class State(TypedDict):
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[State]:
-    """Runs when the app starts and stops: it opens the database, and closes it.
-    What it yields is copied into each request's `state`. See
+    """What the app does when it starts and when it stops, as one function.
+
+    The code before `yield` runs once at startup: it opens the database, and stops
+    the app from starting if the database needs migrating. The app then serves
+    requests while this function is paused at `yield`, and the code after it (the
+    `finally`) runs once at shutdown, closing the database.
+
+    What it yields is copied into each request's `state`, which is how `get_engine`
+    finds the engine. `@asynccontextmanager` turns the function into the
+    "with"-style object FastAPI expects. See
     https://fastapi.tiangolo.com/advanced/events/
     """
     load_dotenv()  # DATABASE_URL, if api/.env sets one
@@ -69,17 +77,17 @@ class VerdictBody(BaseModel):
     verdict: Verdict | None  # null clears it
 
 
-class MarksResponse(BaseModel):
+class RatingsResponse(BaseModel):
     interest: Interest | None
     verdict: Verdict | None
     updated_at: datetime  # UTC
 
     @classmethod
-    def of(cls, marks: Marks) -> MarksResponse:
+    def of(cls, ratings: Ratings) -> RatingsResponse:
         return cls(
-            interest=marks.interest,
-            verdict=marks.verdict,
-            updated_at=marks.updated_at,
+            interest=ratings.interest,
+            verdict=ratings.verdict,
+            updated_at=ratings.updated_at,
         )
 
 
@@ -91,19 +99,19 @@ NOT_FOUND: dict[int | str, dict[str, Any]] = {
 @app.put("/recipes/{recipe_id}/interest", responses=NOT_FOUND)
 def set_interest(
     recipe_id: int, body: InterestBody, engine: DatabaseEngine
-) -> MarksResponse:
+) -> RatingsResponse:
     """Set how interested I am in a recipe before cooking it, or clear it with
     null. "not_for_me" hides it from the library."""
-    return MarksResponse.of(storage.set_interest(engine, recipe_id, body.interest))
+    return RatingsResponse.of(storage.set_interest(engine, recipe_id, body.interest))
 
 
 @app.put("/recipes/{recipe_id}/verdict", responses=NOT_FOUND)
 def set_verdict(
     recipe_id: int, body: VerdictBody, engine: DatabaseEngine
-) -> MarksResponse:
+) -> RatingsResponse:
     """Set how often I'd cook a recipe again after cooking it, or clear it with
     null."""
-    return MarksResponse.of(storage.set_verdict(engine, recipe_id, body.verdict))
+    return RatingsResponse.of(storage.set_verdict(engine, recipe_id, body.verdict))
 
 
 @app.exception_handler(storage.NoSuchRecipeError)

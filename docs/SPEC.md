@@ -15,8 +15,8 @@ I don't yet know what the data looks like, so the plan starts by finding out. On
 ## 2. Phases
 1. **Understand the playlist.** Fetch it, and measure what's actually there: how recipes are split across videos, how Shorts differ, and where recipe details live. *(Done: findings in Section 4.)*
 2. **Useful info for every recipe.** Split each video into its recipes, each with a name, a start time where there is one, and its ingredients and method wherever they can be found. Plain code does what it can, and AI does the parts Phase 1 showed plain code can't. *(Done: Section 5.)*
-3. **Rating, sorting and search.** Everything the UI needs from the data. Mark my interest in each recipe before cooking it ("not for me" hides it, such as the recipes in a multi-recipe video I don't care about), and what I thought after cooking it, so the library can be filtered down to what I'd actually cook. Search over names and ingredients, in one function, with searchable ingredient names. Tidy what the library shows, such as videos that aren't recipes. *(Planned in Section 6.)*
-4. **The API.** FastAPI routes to refresh the playlist in the background, and for anything Phase 3 didn't add a route for, with response models that give the frontend its types. Access control, so only I can change marks or start a refresh. Run locally: nothing is deployed yet.
+3. **Rating, sorting and search.** Everything the UI needs from the data. Rate my interest in each recipe before cooking it ("not for me" hides it, such as the recipes in a multi-recipe video I don't care about), and what I thought after cooking it, so the library can be filtered down to what I'd actually cook. Search over names and ingredients, in one function, with searchable ingredient names. Tidy what the library shows, such as videos that aren't recipes. *(Planned in Section 6.)*
+4. **The API.** FastAPI routes to refresh the playlist in the background, and for anything Phase 3 didn't add a route for, with response models that give the frontend its types. Access control, so only I can change ratings or start a refresh. Run locally: nothing is deployed yet.
 5. **The UI, deployed.** A React + TypeScript frontend for searching, filtering and rating the library, built on the API. Then the whole app is deployed to Fly.io, with backups of the database.
 
 ## 3. Later
@@ -139,7 +139,7 @@ An outline only. Each PR is planned in detail before it starts, and its architec
 
 **1. Fetched data in SQLite** *(done)*
 - SQLite through SQLAlchemy Core, with tables created and changed by Alembic migrations.
-- `recipes fetch <playlist-id>` stores new videos with their channels, chapters and creator comments, and marks videos that have left the playlist as removed.
+- `recipes fetch <playlist-id>` stores new videos with their channels, chapters and creator comments, and ratings videos that have left the playlist as removed.
 - *Plain code only.*
 
 **2. Recipes** *(done)*
@@ -166,7 +166,7 @@ Each recipe's ingredients and method, from a linked page, the description or a c
 
 ### Goal
 Everything the UI needs from the data, so Phases 4 and 5 only expose it. I can:
-- mark my **interest** in a recipe before cooking it: *want to cook*, *curious* or *not for me*. "Not for me" hides it, such as one of the recipes in a "4 recipes" video.
+- rate my **interest** in a recipe before cooking it: *want to cook*, *curious* or *not for me*. "Not for me" hides it, such as one of the recipes in a "4 recipes" video.
 - give a recipe I've cooked a **verdict**, by how often I'd make it again: *regularly*, *once in a while*, *special occasion only* or *not again*. A recipe I wouldn't make again stays shown, so I remember I tried it.
 - **find** recipes: search their names and ingredients, filter them (by interest, by verdict, cooked or not, with ingredients or not) and sort them (by interest or verdict, by when they were saved, by name)
 
@@ -175,24 +175,24 @@ Videos that aren't recipes are left out of what the library shows by default.
 Each part comes with its API route, so it's tested the way the UI will use it. Phase 4 adds the rest of the API: refreshing, access control, and the routes for what's already built.
 
 ### How the data is kept
-- **My marks are kept apart from built data,** in their own table, one row per recipe. Building never reads or writes them, and a recipe without a row has no marks and is shown.
+- **My ratings are kept apart from built data,** in their own table, one row per recipe. Building never reads or writes them, and a recipe without a row has no ratings and is shown.
 - **Search is one function** in `storage.py`, a case-insensitive `LIKE` over each recipe's name and its ingredient lines as written. At this size every search reads every recipe, which is fast enough, and plain `LIKE` works the same on Postgres.
 
 ### Tables
-- **`recipe_marks`** (PR 1): `recipe_id` (the key, and a foreign key to `recipes`), `interest` (`want_to_cook`, `curious`, `not_for_me`, or none), `verdict` (`regularly`, `once_in_a_while`, `special_occasion`, `not_again`, or none), and `updated_at`. There's no `hidden` column: "not for me" is what hides a recipe. Every mark is set by hand, so there's no `_by` column. Per-user marks, if anyone else uses the app, would add a `user_id` to the key.
+- **`recipe_ratings`** (PR 1): `recipe_id` (the key, and a foreign key to `recipes`), `interest` (`want_to_cook`, `curious`, `not_for_me`, or none), `verdict` (`regularly`, `once_in_a_while`, `special_occasion`, `not_again`, or none), and `updated_at`. There's no `hidden` column: "not for me" is what hides a recipe. Every rating is set by hand, so there's no `_by` column. Per-user ratings, if anyone else uses the app, would add a `user_id` to the key.
 
 ### PRs
 **1. Interest and verdicts** *(done)*
-- The `recipe_marks` table, and storage functions to set each mark (`set_interest` and `set_verdict`, where `None` clears it). Each saves with one upsert (insert, or update if the row exists) and returns the recipe's marks.
-- The API's first routes, in FastAPI: `PUT /recipes/{id}/interest` (`{"interest": "curious"}`) and `PUT /recipes/{id}/verdict` (`{"verdict": "regularly"}`), where `null` clears the mark. Each answers with the recipe's marks, or 404 for a recipe that isn't stored. The app opens the database when it starts, and won't start if it needs migrating.
+- The `recipe_ratings` table, and storage functions to set each rating (`set_interest` and `set_verdict`, where `None` clears it). Each saves with one upsert (insert, or update if the row exists) and returns the recipe's ratings.
+- The API's first routes, in FastAPI: `PUT /recipes/{id}/interest` (`{"interest": "curious"}`) and `PUT /recipes/{id}/verdict` (`{"verdict": "regularly"}`), where `null` clears the rating. Each answers with the recipe's ratings, or 404 for a recipe that isn't stored. The app opens the database when it starts, and won't start if it needs migrating.
 - *Plain code only.*
 
 **2. Finding recipes**
-- One `find_recipes` function: an optional search over names and ingredient lines, the filters and sorts above, and recipes marked "not for me" and videos that aren't recipes left out unless asked for. A `GET /recipes` route calls it.
+- One `find_recipes` function: an optional search over names and ingredient lines, the filters and sorts above, and recipes rated "not for me" and videos that aren't recipes left out unless asked for. A `GET /recipes` route calls it.
 - Videos that aren't recipes are marked as such. How (by code, AI or hand) is decided when this PR is planned, from the 19 recipes named after their video.
 
 *Done when:*
-- A recipe's marks survive building again, and can be changed and cleared.
+- A recipe's ratings survive building again, and can be changed and cleared.
 - Searches for real ingredients ("leek", "tahini", "lök") find the recipes that use them, and the filters and sorts are tested on real data.
 - The tests pass.
 

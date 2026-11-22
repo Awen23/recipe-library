@@ -27,7 +27,7 @@ def recipe_id(engine: Engine, name: str) -> int:
     return found
 
 
-def test_setting_interest_answers_with_the_marks(
+def test_setting_interest_answers_with_the_ratings(
     client: TestClient, split: Engine
 ) -> None:
     oats = recipe_id(split, "Overnight oats")
@@ -68,26 +68,26 @@ def test_a_verdict_can_be_cleared_with_null(client: TestClient, split: Engine) -
 
 
 @pytest.mark.parametrize(
-    ("mark", "body"),
+    ("rating", "body"),
     [("interest", {"interest": "5 stars"}), ("verdict", {"verdict": "loved it"})],
     ids=str,
 )
-def test_a_mark_that_isnt_one_of_its_levels_is_refused(
-    client: TestClient, split: Engine, mark: str, body: dict[str, str]
+def test_a_rating_that_isnt_one_of_its_levels_is_refused(
+    client: TestClient, split: Engine, rating: str, body: dict[str, str]
 ) -> None:
     """Not from the data: made-up levels."""
     oats = recipe_id(split, "Overnight oats")
 
-    response = client.put(f"/recipes/{oats}/{mark}", json=body)
+    response = client.put(f"/recipes/{oats}/{rating}", json=body)
 
     assert response.status_code == 422
 
 
-def test_a_mark_must_be_given_even_to_clear_it(
+def test_a_rating_must_be_given_even_to_clear_it(
     client: TestClient, split: Engine
 ) -> None:
     """Not from the data: a body without its field, so a typo can't clear a
-    mark."""
+    rating."""
     oats = recipe_id(split, "Overnight oats")
 
     response = client.put(f"/recipes/{oats}/interest", json={"intrest": "curious"})
@@ -95,7 +95,7 @@ def test_a_mark_must_be_given_even_to_clear_it(
     assert response.status_code == 422
 
 
-def test_marking_a_recipe_that_isnt_stored_is_not_found(client: TestClient) -> None:
+def test_rating_a_recipe_that_isnt_stored_is_not_found(client: TestClient) -> None:
     """Not from the data: an ID no recipe has."""
     response = client.put("/recipes/9999/verdict", json={"verdict": "regularly"})
 
