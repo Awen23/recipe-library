@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Any
 
 import httpx2
@@ -6,9 +7,9 @@ from sqlalchemy import Engine, select, update
 
 from recipes.ai import Claude
 from recipes.building import DetailsSummary, build_recipes, fill_details
-from recipes.details import copied_lines, from_answer
+from recipes.details import copied_lines, from_answer, plain_details, readable_pages
 from recipes.fetching import fetch_linked_pages
-from recipes.storage import recipes, videos_to_fill
+from recipes.storage import Details, recipes, videos_to_fill
 
 from fakes import FakeClaudeApi, FakeWeb, read_fixture, read_page, recorded_details
 
@@ -173,6 +174,57 @@ def test_copied_lines_keeps_only_lines_in_the_text() -> None:
     assert copied_lines(lines, description) == lines[:2]
 
 
+def test_copied_lines_must_be_whole_lines() -> None:
+    description = read_fixture("descriptions.json")[SIX_MEALS_ID]
+    # Parts of the real lines "400g firm tofu (14oz)" and "1 tbsp yellow mustard".
+    parts = ["firm tofu", "1 tbsp yellow"]
+
+    assert copied_lines(parts, description) == []
+
+
+def test_copied_lines_may_leave_out_bullets() -> None:
+    description = read_fixture("descriptions.json")["whr7iOKRXTA"]
+
+    # Written there as "- 1/2 cup chia seeds".
+    assert copied_lines(["1/2 cup chia seeds"], description) == ["1/2 cup chia seeds"]
+
+
+def test_chapter_timestamps_are_not_ingredient_lines(
+    built: Engine, fake_claude: FakeClaudeApi
+) -> None:
+    """Not from the data: a description that's only chapters, and no links."""
+    [video] = [v for v in videos_to_fill(built) if v.id == SEITAN_ID]
+    text = replace(video.text, description="0:00 Intro\n1:23 Pasta\n4:56 Soup")
+
+    assert plain_details(replace(video, text=text)) == {
+        recipe.id: Details(by="code") for recipe in video.recipes
+    }
+
+
+def test_a_refusal_marks_every_recipe_as_looked_at(
+    built: Engine, fake_claude: FakeClaudeApi
+) -> None:
+    """Not from the data: a refusal follows the shape in Anthropic's docs."""
+    refusal: dict[str, Any] = {
+        "id": "msg_1",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-haiku-5-5",
+        "content": [],
+        "stop_reason": "refusal",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 10, "output_tokens": 0},
+    }
+    fake_claude.queue.append(httpx2.Response(200, json=refusal))
+
+    summary = fill(built, fake_claude)
+
+    assert summary.failed == {}
+    looked_at = [r for v in (SIX_MEALS_ID, "whr7iOKRXTA") for r in details(built, v)]
+    # The first video asked about was refused, so its recipes have nothing.
+    assert any(r["details_by"] == "ai" and r["source"] is None for r in looked_at)
+
+
 def test_an_answer_with_numbers_out_of_range_finds_nothing(
     built: Engine,
 ) -> None:
@@ -190,13 +242,13 @@ def test_an_answer_with_numbers_out_of_range_finds_nothing(
 def test_a_link_number_out_of_range_finds_nothing(built: Engine) -> None:
     """Not from the data: Claude's real answer, with its link number broken."""
     [video] = [v for v in videos_to_fill(built) if v.id == SIX_MEALS_ID]
+    pages = readable_pages(video)
     answer = recorded_details(SIX_MEALS_ID)
-    assert answer.recipes[0].source == "link"
-    answer.recipes[0].link = 99
+    stew = video.recipes[0].id
+    assert from_answer(video, pages, answer)[stew].source == "link"
+    answer.recipes[0].link = len(pages)  # one past the last
 
-    found = from_answer(video, [], answer)
-
-    assert found[video.recipes[0].id].source is None
+    assert from_answer(video, pages, answer)[stew].source is None
 
 
 def test_text_with_no_line_really_written_there_finds_nothing(built: Engine) -> None:

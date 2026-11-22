@@ -15,12 +15,16 @@ from recipes.pages import NO_RECIPE, RECIPE
 from recipes.storage import Details, StoredPage, VideoToFill
 
 # A line that starts with an amount, like "2 tbsp soy sauce" or "½ cup oats", or an
-# "Ingredients" heading. A video needs a few before its text is worth reading.
+# "Ingredients" heading, but not a timestamp like "1:42 Breakfasts". A video needs a
+# few before its text is worth reading.
 _INGREDIENT_LINE = re.compile(
-    r"^\W*(?:\d|[½¼¾⅓⅔⅛]|a (?:pinch|handful)|ingredients)", re.IGNORECASE | re.MULTILINE
+    r"^[\s\-•*·]*(?!\d{1,2}:\d{2})(?:\d|[½¼¾⅓⅔⅛]|a (?:pinch|handful)|ingredients)",
+    re.IGNORECASE | re.MULTILINE,
 )
 MIN_INGREDIENT_LINES = 3
 _LINK = re.compile(r"https?://[^\s)]+")
+# A bullet, or a step's number like "1." or "2)", which Claude is told to leave out.
+_LINE_START = re.compile(r"^[\s\-•*·▪➤→]*(?:\d+[.)]\s+)?")
 
 
 def plain_details(video: VideoToFill) -> dict[int, Details] | None:
@@ -102,14 +106,14 @@ def from_answer(
 
 
 def copied_lines(lines: Sequence[str], text: str) -> list[str]:
-    """The lines that really are in `text`, ignoring case and spacing, so nothing
-    Claude wrote itself is stored as the creator's recipe. Links in a line, often to
-    a shop, are dropped."""
-    written = _squash(text)
+    """The lines that are whole lines of `text`, ignoring case, spacing and any
+    bullet or step number, so nothing Claude wrote or shortened itself is stored as
+    the creator's recipe. Links in a line, often to a shop, are dropped."""
+    written = {_squash(_LINE_START.sub("", line)) for line in text.splitlines()}
     return [
         _without_links(line)
         for line in lines
-        if _without_links(line) and _squash(line) in written
+        if _without_links(line) and _squash(_LINE_START.sub("", line)) in written
     ]
 
 
