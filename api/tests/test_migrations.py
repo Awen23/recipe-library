@@ -17,6 +17,7 @@ TABLES = {
     "creator_comments",
     "recipes",
     "recipe_links",
+    "recipe_marks",
 }
 
 

@@ -182,8 +182,8 @@ There's no command for rating or searching yet: Phase 3 builds and tests the fun
 - **`recipe_marks`** (PR 1): `recipe_id` (the key, and a foreign key to `recipes`), `rating` (`would_cook`, `curious`, `not_for_me`, or none), `hidden`, and `updated_at`. Every mark is set by hand, so there's no `_by` column. Per-user marks, if anyone else uses the app, would add a `user_id` to the key.
 
 ### PRs
-**1. Ratings and hiding**
-- The `recipe_marks` table, and storage functions to rate a recipe, clear its rating, and hide or show it. Each saves with one upsert (insert, or update if the row exists).
+**1. Ratings and hiding** *(done)*
+- The `recipe_marks` table, and storage functions to rate a recipe (`rate_recipe`, where `None` clears the rating) and hide or show it (`hide_recipe`). Each saves with one upsert (insert, or update if the row exists), and a recipe ID that isn't stored raises `NoSuchRecipeError`, which Phase 4 can turn into a 404.
 - *Plain code only.*
 
 **2. Finding recipes**

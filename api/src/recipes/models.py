@@ -1,12 +1,16 @@
-"""The types the app passes between its parts while working out recipes. They hold
-no database or web code: `storage` fills them from the database, and `details` and
-`building` work with them.
+"""The types the app passes between its parts. They hold no database or web code:
+`storage` fills them from the database, and `details` and `building` work with them
+to work out recipes.
 """
 
 from dataclasses import dataclass
+from typing import Literal
 
 from recipes.ai import VideoText
 from recipes.recipe_data import PageRecipe
+
+# How interested I am in a recipe, as I rate it by hand.
+Rating = Literal["would_cook", "curious", "not_for_me"]
 
 
 @dataclass(frozen=True)

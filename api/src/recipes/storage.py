@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import sqlalchemy
 from alembic.config import Config
@@ -36,11 +36,19 @@ from sqlalchemy import (
     select,
     update,
 )
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from recipes.ai import VideoText
 from recipes.chapters import Chapter, parse_chapters
 from recipes.links import Link, find_links
-from recipes.models import Details, Line, RecipeName, StoredPage, VideoToFill
+from recipes.models import (
+    Details,
+    Line,
+    Rating,
+    RecipeName,
+    StoredPage,
+    VideoToFill,
+)
 from recipes.pages import Page
 from recipes.playlist import Playlist
 from recipes.recipe_data import PageRecipe
@@ -196,6 +204,22 @@ recipes = Table(
     _set_by("details_by"),
     _one_of("source", SOURCES),
     sqlite_autoincrement=True,  # what keeps `id`s from being reused
+)
+
+# How interested I am in a recipe.
+RATINGS = get_args(Rating)
+
+# My own marks on recipes, set by hand: one row per recipe I've rated or hidden.
+# Building never reads or writes this table, so the marks survive it. A recipe with
+# no row is unrated and shown.
+recipe_marks = Table(
+    "recipe_marks",
+    metadata,
+    Column("recipe_id", Integer, ForeignKey("recipes.id"), primary_key=True),
+    Column("rating", String, nullable=True),  # one of RATINGS, or null for unrated
+    Column("hidden", Boolean, nullable=False),
+    Column("updated_at", DateTime, nullable=False),
+    _one_of("rating", RATINGS),
 )
 
 
@@ -483,6 +507,53 @@ def save_details(engine: Engine, found: dict[int, Details]) -> None:
                     details_confidence=details.confidence,
                 )
             )
+
+
+class NoSuchRecipeError(LookupError):
+    """There's no recipe with this ID."""
+
+
+def rate_recipe(
+    engine: Engine,
+    recipe_id: int,
+    rating: Rating | None,
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Set how interested I am in a recipe, or clear it with None."""
+    _mark(engine, recipe_id, {"rating": rating}, now or _utc_now())
+
+
+def hide_recipe(
+    engine: Engine, recipe_id: int, hidden: bool = True, *, now: datetime | None = None
+) -> None:
+    """Hide a recipe from the library, or show it again with `hidden=False`."""
+    _mark(engine, recipe_id, {"hidden": hidden}, now or _utc_now())
+
+
+def _mark(
+    engine: Engine, recipe_id: int, changes: dict[str, Any], now: datetime
+) -> None:
+    """Change some of a recipe's marks and leave the rest, adding its row if it has
+    none yet: one "upsert", which SQLite and Postgres both write as
+    `INSERT ... ON CONFLICT DO UPDATE`. Moving to Postgres swaps `sqlite_insert` for
+    the same function from `sqlalchemy.dialects.postgresql`. See
+    https://docs.sqlalchemy.org/en/21/dialects/sqlite.html#insert-on-conflict-upsert
+    """
+    with engine.begin() as connection:
+        found = connection.scalar(select(recipes.c.id).where(recipes.c.id == recipe_id))
+        if found is None:
+            raise NoSuchRecipeError(recipe_id)
+        new_row = {"recipe_id": recipe_id, "rating": None, "hidden": False}
+        statement = sqlite_insert(recipe_marks).values(
+            {**new_row, **changes, "updated_at": now}
+        )
+        connection.execute(
+            statement.on_conflict_do_update(
+                index_elements=[recipe_marks.c.recipe_id],
+                set_={**changes, "updated_at": now},
+            )
+        )
 
 
 def _lines(lines: Sequence[Line] | None) -> list[dict[str, Any]] | None:
