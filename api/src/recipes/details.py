@@ -2,16 +2,16 @@
 they're written.
 
 Plain code settles the one case with a single answer: a video with one recipe and a
-link to a page with recipe data. Claude decides the rest, from the video's links,
-description and creator comments. A video with nothing to read is marked as looked
-at without asking.
+link to a page with recipe data. Claude decides the rest, from the video's links (and
+the text of linked pages with no recipe data), description and creator comments. A
+video with nothing to read is marked as looked at without asking.
 """
 
 import re
 from collections.abc import Sequence
 
-from recipes.ai import DetailsAnswer, LinkText
-from recipes.models import Details, StoredPage, VideoToFill
+from recipes.ai import AILine, DetailsAnswer, LinkText
+from recipes.models import Details, Line, StoredPage, VideoToFill
 from recipes.pages import NO_RECIPE, RECIPE
 
 # What makes a video's text worth Claude reading: an ingredients heading (English,
@@ -30,9 +30,9 @@ _UNIT_AMOUNT = re.compile(
 )
 MIN_AMOUNTS = 3
 _LINK = re.compile(r"https?://[^\s)]+")
-# A bullet or emoji, or a step's number like "1." or "2)", which Claude is told to
-# leave out.
-_LINE_START = re.compile(r"^\W*(?:\d+[.)]\s+)?")
+# A bullet or emoji, a step's number like "1." or "2)", or a chapter's timestamp like
+# "0:52", which Claude is told to leave out.
+_LINE_START = re.compile(r"^\W*(?:\d{1,2}(?::\d{2}){1,2}\s*\W*|\d+[.)]\s+)?")
 # What separates ingredients some creators write on one line: "{1x onion; 2x garlic}".
 _ITEM_BREAK = re.compile(r"[;{}|]")
 
@@ -48,11 +48,11 @@ def plain_details(video: VideoToFill) -> dict[int, Details] | None:
                         by="code",
                         source="link",
                         source_url=page.url,
-                        ingredients=page.recipe.ingredients,
-                        method=page.recipe.method,
+                        ingredients=[Line(text) for text in page.recipe.ingredients],
+                        method=[Line(text) for text in page.recipe.method],
                     )
                 }
-    if not readable_pages(video) and not _mentions_ingredients(video):
+    if not readable_pages(video) and not _worth_reading(video):
         return {recipe.id: Details(by="code") for recipe in video.recipes}
     return None
 
@@ -64,15 +64,23 @@ def readable_pages(video: VideoToFill) -> list[StoredPage]:
 
 def links_for_claude(pages: Sequence[StoredPage]) -> list[LinkText]:
     return [
-        LinkText(page.link_text, page.url, page.recipe.name if page.recipe else None)
+        LinkText(
+            page.link_text,
+            page.url,
+            page.recipe.name if page.recipe else None,
+            page.text,
+        )
         for page in pages
     ]
 
 
-def _mentions_ingredients(video: VideoToFill) -> bool:
+def _worth_reading(video: VideoToFill) -> bool:
+    """Whether the video's text may hold a recipe: ingredients, or chapters that may
+    be its steps."""
     text = "\n".join([video.text.description, *video.text.creator_comments])
     return bool(
-        _INGREDIENTS_HEADING.search(text)
+        len(video.text.chapters) >= MIN_AMOUNTS
+        or _INGREDIENTS_HEADING.search(text)
         or len(_LINE_AMOUNT.findall(text)) >= MIN_AMOUNTS
         or len(_UNIT_AMOUNT.findall(text)) >= MIN_AMOUNTS
     )
@@ -93,12 +101,18 @@ def from_answer(
         if item.source == "link" and item.link is not None:
             if 0 <= item.link < len(pages):
                 page = pages[item.link]
+                if page.recipe is not None:
+                    ingredients = [Line(text) for text in page.recipe.ingredients]
+                    method = [Line(text) for text in page.recipe.method]
+                else:  # a place to look, unless Claude copied lines from its text
+                    ingredients = copied_lines(item.ingredients, page.text or "")
+                    method = copied_lines(item.method, page.text or "")
                 found[recipe_id] = Details(
                     by="ai",
                     source="link",
                     source_url=page.url,
-                    ingredients=page.recipe.ingredients if page.recipe else None,
-                    method=page.recipe.method if page.recipe else None,
+                    ingredients=ingredients or None,
+                    method=method or None,
                     confidence=confidence,
                 )
         elif item.source in ("description", "comment"):
@@ -108,18 +122,19 @@ def from_answer(
                 else "\n".join(video.text.creator_comments)
             )
             ingredients = copied_lines(item.ingredients, text)
-            if ingredients:
+            method = copied_lines(item.method, text)
+            if ingredients or method:
                 found[recipe_id] = Details(
                     by="ai",
                     source=item.source,
-                    ingredients=ingredients,
-                    method=copied_lines(item.method, text),
+                    ingredients=ingredients or None,
+                    method=method or None,
                     confidence=confidence,
                 )
     return {id_: details for id_, details in found.items() if id_ in video.to_fill}
 
 
-def copied_lines(lines: Sequence[str], text: str) -> list[str]:
+def copied_lines(lines: Sequence[AILine], text: str) -> list[Line]:
     """The lines that are whole lines of `text`, or items on one, ignoring case,
     spacing and any bullet or step number, so nothing Claude wrote or shortened
     itself is stored as the creator's recipe. Links in a line, often to a shop, are
@@ -129,9 +144,10 @@ def copied_lines(lines: Sequence[str], text: str) -> list[str]:
     ]
     written = {_squash(_LINE_START.sub("", part)) for part in lines_and_items}
     return [
-        _without_links(line)
+        Line(_without_links(line.text), line.note)
         for line in lines
-        if _without_links(line) and _squash(_LINE_START.sub("", line)) in written
+        if _without_links(line.text)
+        and _squash(_LINE_START.sub("", line.text)) in written
     ]
 
 
@@ -141,4 +157,8 @@ def _without_links(line: str) -> str:
 
 
 def _squash(text: str) -> str:
-    return " ".join(text.lower().split())
+    """`text` in lower case, with single spaces and straight quotes."""
+    return " ".join(text.lower().translate(_STRAIGHT_QUOTES).split())
+
+
+_STRAIGHT_QUOTES = str.maketrans("‘’“”", "''\"\"")

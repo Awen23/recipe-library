@@ -5,11 +5,12 @@ import httpx2
 import pytest
 from sqlalchemy import Engine, select, update
 
-from recipes.ai import Claude
+from recipes.ai import AILine, Claude
 from recipes.building import build_recipes, fill_details
 from recipes.details import copied_lines, from_answer, plain_details, readable_pages
 from recipes.fetching import fetch_linked_pages
-from recipes.models import Details
+from recipes.models import Details, Line, StoredPage
+from recipes.pages import NO_RECIPE
 from recipes.storage import recipes, videos_to_fill
 
 from fakes import FakeClaudeApi, read_fixture, recipe_web, recorded_details
@@ -17,6 +18,15 @@ from fakes import FakeClaudeApi, read_fixture, recipe_web, recorded_details
 OATMEAL_ID = "gOxwhuntyMY"  # one recipe, with a link to its page
 SIX_MEALS_ID = "nHr9LqK3PKc"  # six recipes: one on a linked page, five in the text
 SEITAN_ID = "eG0tXlljTtI"  # its description is trimmed, so it has nothing to read
+
+
+def copied(lines: list[str]) -> list[AILine]:
+    """Lines as Claude copies them: none of them notes."""
+    return [AILine(text=line, note=False) for line in lines]
+
+
+def texts(lines: list[Line]) -> list[str]:
+    return [line.text for line in lines]
 
 
 @pytest.fixture
@@ -61,7 +71,7 @@ def test_plain_code_settles_a_one_recipe_video_with_a_recipe_page(
     assert (
         oatmeal["source_url"] == "https://goodfoodbaddie.com/blueberry-baked-oatmeal/"
     )
-    assert oatmeal["ingredients"][0] == (
+    assert oatmeal["ingredients"][0]["text"] == (
         "2 1/2 cups Rolled Oats (ensure gluten-free if necessary)"
     )
 
@@ -89,7 +99,7 @@ def test_claude_picks_a_page_for_one_recipe_and_the_text_for_the_others(
     # The page's own ingredients, not ones Claude wrote out.
     assert len(stew["ingredients"]) == 24
     assert (patties["source"], patties["source_url"]) == ("description", None)
-    assert patties["ingredients"][0] == "400g firm tofu (14oz)"
+    assert patties["ingredients"][0] == {"text": "400g firm tofu (14oz)", "note": False}
 
 
 def test_a_video_with_nothing_to_read_is_marked_as_looked_at(
@@ -159,7 +169,7 @@ def test_copied_lines_keeps_only_lines_in_the_text() -> None:
         "2 cups vegan mayo",  # Not from the data: a line that isn't written there
     ]
 
-    assert copied_lines(lines, description) == lines[:2]
+    assert texts(copied_lines(copied(lines), description)) == lines[:2]
 
 
 def test_copied_lines_must_be_whole_lines() -> None:
@@ -167,14 +177,15 @@ def test_copied_lines_must_be_whole_lines() -> None:
     # Parts of the real lines "400g firm tofu (14oz)" and "1 tbsp yellow mustard".
     parts = ["firm tofu", "1 tbsp yellow"]
 
-    assert copied_lines(parts, description) == []
+    assert copied_lines(copied(parts), description) == []
 
 
 def test_copied_lines_may_leave_out_bullets() -> None:
     description = read_fixture("descriptions.json")["whr7iOKRXTA"]
 
     # Written there as "- 1/2 cup chia seeds".
-    assert copied_lines(["1/2 cup chia seeds"], description) == ["1/2 cup chia seeds"]
+    found = copied_lines(copied(["1/2 cup chia seeds"]), description)
+    assert texts(found) == ["1/2 cup chia seeds"]
 
 
 def test_chapter_timestamps_are_not_ingredient_lines(
@@ -247,7 +258,8 @@ def test_text_with_no_line_really_written_there_finds_nothing(built: Engine) -> 
     [video] = [v for v in videos_to_fill(built) if v.id == SIX_MEALS_ID]
     answer = recorded_details(SIX_MEALS_ID)
     assert answer.recipes[1].source == "description"
-    answer.recipes[1].ingredients = ["2 cups vegan mayo"]
+    answer.recipes[1].ingredients = copied(["2 cups vegan mayo"])
+    answer.recipes[1].method = []
 
     found = from_answer(video, [], answer)
 
@@ -258,9 +270,8 @@ def test_copied_lines_drops_links_in_a_line() -> None:
     # From the description of irTsXkAuZHg.
     line = "150 g vital wheat gluten (https://amzn.to/3dZgzsF)"
 
-    assert copied_lines([line], f"Ingredients:\n{line}\n") == [
-        "150 g vital wheat gluten"
-    ]
+    found = copied_lines(copied([line]), f"Ingredients:\n{line}\n")
+    assert texts(found) == ["150 g vital wheat gluten"]
 
 
 @pytest.mark.parametrize(
@@ -279,7 +290,7 @@ def test_copied_lines_drops_links_in_a_line() -> None:
 def test_copied_lines_may_leave_out_symbols_and_split_items(
     line: str, written: str
 ) -> None:
-    assert copied_lines([line], written) == [line]
+    assert texts(copied_lines(copied([line]), written)) == [line]
 
 
 @pytest.mark.parametrize(
@@ -301,3 +312,83 @@ def test_ingredients_in_sentences_or_under_a_heading_are_worth_asking_about(
     text = replace(video.text, description=description)
 
     assert plain_details(replace(video, text=text)) is None  # Claude is asked
+
+
+def test_copied_lines_may_leave_out_a_chapter_timestamp() -> None:
+    # From the description of eG0tXlljTtI, whose chapters are its steps.
+    written = "0:52 ROUGHLY MASH THE TOFU AND MIX WELL\n2:35 DIVIDE INTO 4"
+    steps = copied(["ROUGHLY MASH THE TOFU AND MIX WELL", "DIVIDE INTO 4"])
+
+    assert texts(copied_lines(steps, written)) == [
+        "ROUGHLY MASH THE TOFU AND MIX WELL",
+        "DIVIDE INTO 4",
+    ]
+
+
+NOTE = (
+    "*️⃣Note: Can make nut-free by replacing cashews with a seed like pumpkin, hemp, "
+    "or sunflower or make no/low fat by replacing cashews with oat flour!"
+)
+
+
+def test_a_note_stays_where_it_was_written() -> None:
+    # From the description of SdN3xM_xALg, whose cashews line has a footnote.
+    written = f"💛 1/2 cup cashews*\n💛 1/2 cup nutritional yeast\n{NOTE}"
+    lines = [
+        AILine(text="1/2 cup cashews*", note=False),
+        AILine(text="1/2 cup nutritional yeast", note=False),
+        AILine(text=NOTE, note=True),
+    ]
+
+    assert copied_lines(lines, written) == [
+        Line("1/2 cup cashews*"),
+        Line("1/2 cup nutritional yeast"),
+        Line(NOTE, note=True),
+    ]
+
+
+def test_a_method_is_kept_without_ingredients(built: Engine) -> None:
+    """Not from the data: Claude's real answer, as if only the steps were written."""
+    [video] = [v for v in videos_to_fill(built) if v.id == SIX_MEALS_ID]
+    answer = recorded_details(SIX_MEALS_ID)
+    description = video.text.description
+    step = next(line for line in description.splitlines() if "BAKE for" in line)
+    answer.recipes[5].ingredients = []
+    answer.recipes[5].method = copied([step])
+
+    found = from_answer(video, [], answer)[video.recipes[5].id]
+
+    assert (found.source, found.ingredients) == ("description", None)
+    assert found.method is not None and len(found.method) == 1
+
+
+def test_lines_can_be_copied_from_the_text_of_a_page_without_recipe_data(
+    built: Engine,
+) -> None:
+    """Not from the data: the page text is made up, from a page the six-meal video
+    links to."""
+    [video] = [v for v in videos_to_fill(built) if v.id == SIX_MEALS_ID]
+    page = StoredPage(
+        "https://minarome.substack.com/",
+        "✍Written Instructions on my Substack",
+        NO_RECIPE,
+        None,
+        "Peanut stew\n1 red bell pepper\n1-2 onions\nSubscribe",
+    )
+    answer = recorded_details(SIX_MEALS_ID)
+    answer.recipes[0].link = 0
+    answer.recipes[0].ingredients = copied(["1 red bell pepper", "1-2 onions"])
+
+    found = from_answer(video, [page], answer)[video.recipes[0].id]
+
+    assert (found.source, found.source_url) == ("link", page.url)
+    assert found.ingredients == [Line("1 red bell pepper"), Line("1-2 onions")]
+
+
+def test_copied_lines_may_straighten_quotes() -> None:
+    # Not from the data: a line written with a curly quote, as nHr9LqK3PKc does.
+    written = "1 can black beans (14oz = 400g)\nwhat you’re using"
+
+    found = copied_lines(copied(["what you're using"]), written)
+
+    assert texts(found) == ["what you're using"]

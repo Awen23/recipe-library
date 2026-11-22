@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Self
 
 import httpx2
+from bs4 import BeautifulSoup
 
 from recipes.links import is_skipped
 from recipes.recipe_data import NoRecipeError, PageRecipe, read_recipe
@@ -14,6 +15,11 @@ USER_AGENT = "recipe-library/0.1 (a personal recipe index)"
 TIMEOUT_SECONDS = 20
 MAX_BYTES = 5_000_000  # recipe pages are well under this
 MAX_REDIRECTS = 10
+# A page's text is kept up to this many characters. A recipe page's text, story
+# included, is well under it.
+MAX_TEXT = 20_000
+# Parts of a page that are never the recipe.
+_NOT_CONTENT = ["script", "style", "noscript", "svg", "nav", "header", "footer", "form"]
 
 # How fetching a link went. An HTTP error is stored as `HTTP <status>`.
 RECIPE = "recipe"
@@ -34,6 +40,7 @@ class Page:
     final_url: str | None  # where it led after redirects, if it got a response
     outcome: str
     recipe: PageRecipe | None  # when the outcome is RECIPE
+    text: str | None = None  # the page's text, when the outcome is NO_RECIPE
 
 
 class PageFetcher:
@@ -102,7 +109,7 @@ class PageFetcher:
         try:
             recipe = read_recipe(html, final_url)
         except NoRecipeError:
-            return Page(url, final_url, NO_RECIPE, None)
+            return Page(url, final_url, NO_RECIPE, None, page_text(html))
         return Page(url, final_url, RECIPE, recipe)
 
 
@@ -116,3 +123,13 @@ def _is_private(host: str) -> bool:
     except ValueError:  # a hostname
         return False
     return not address.is_global
+
+
+def page_text(html: str) -> str:
+    """A page's visible text, one line per line on the page, without its scripts,
+    menus and footers. The page is only parsed, never run."""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(_NOT_CONTENT):
+        tag.decompose()
+    lines = (line.strip() for line in soup.get_text("\n").splitlines())
+    return "\n".join(line for line in lines if line)[:MAX_TEXT]

@@ -10,6 +10,17 @@ from recipes.recipe_data import PageRecipe
 
 
 @dataclass(frozen=True)
+class Line:
+    """One line of a written recipe: an ingredient or a step, or a note the creator
+    wrote among them, like "*soaked overnight". Stored as JSON, as
+    `{"text": ..., "note": ...}`, in the order written, so a note shows where it was
+    written."""
+
+    text: str
+    note: bool = False
+
+
+@dataclass(frozen=True)
 class RecipeName:
     id: int
     name: str
@@ -23,6 +34,7 @@ class StoredPage:
     link_text: str
     outcome: str
     recipe: PageRecipe | None
+    text: str | None  # the page's text, when it has no recipe data
 
 
 @dataclass(frozen=True)
@@ -45,6 +57,6 @@ class Details:
     by: str  # who looked: "code" or "ai"
     source: str | None = None  # "link", "description" or "comment"
     source_url: str | None = None  # the page, when it's from a link
-    ingredients: list[str] | None = None  # None for a page that's a place to look
-    method: list[str] | None = None
+    ingredients: list[Line] | None = None  # None for a page that's a place to look
+    method: list[Line] | None = None
     confidence: int | None = None  # 0-100, when AI decided

@@ -40,7 +40,7 @@ from sqlalchemy import (
 from recipes.ai import VideoText
 from recipes.chapters import Chapter, parse_chapters
 from recipes.links import Link, find_links
-from recipes.models import Details, RecipeName, StoredPage, VideoToFill
+from recipes.models import Details, Line, RecipeName, StoredPage, VideoToFill
 from recipes.pages import Page
 from recipes.playlist import Playlist
 from recipes.recipe_data import PageRecipe
@@ -136,8 +136,10 @@ recipe_links = Table(
     Column("fetched_at", DateTime, nullable=False),
     Column("outcome", String, nullable=False),  # see `pages`, such as "recipe"
     # The page's first recipe, {"name", "ingredients", "method"}, when it has one.
-    # Not the page itself, which is the site's own writing.
     Column("recipe", _JSON, nullable=True),
+    # The page's text, when it has no recipe data, for Claude to read the recipe from.
+    # Only its text, without the page's markup or scripts.
+    Column("page_text", Text, nullable=True),
 )
 
 
@@ -178,8 +180,9 @@ recipes = Table(
     Column("start_by", String, nullable=False),
     # The written recipe, and where it came from. A build looks for them once, and
     # `details_by` says who looked. The rest stay null when nothing was found.
-    Column("ingredients", _JSON, nullable=True),  # list of lines, such as "1 cup oats"
-    Column("method", _JSON, nullable=True),  # list of steps
+    # Lists of `models.Line`: {"text": "1 cup oats", "note": false}.
+    Column("ingredients", _JSON, nullable=True),
+    Column("method", _JSON, nullable=True),
     Column("source", String, nullable=True),  # "link", "description" or "comment"
     Column("source_url", String, nullable=True),  # the page, when it's from a link
     Column("details_by", String, nullable=True),
@@ -410,6 +413,7 @@ def save_pages(
                     "fetched_at": now,
                     "outcome": page.outcome,
                     "recipe": asdict(page.recipe) if page.recipe else None,
+                    "page_text": page.text,
                 }
                 for position, (link, page) in enumerate(fetched)
             ],
@@ -453,6 +457,7 @@ def videos_to_fill(engine: Engine) -> list[VideoToFill]:
                             link_text=page.link_text,
                             outcome=page.outcome,
                             recipe=PageRecipe(**page.recipe) if page.recipe else None,
+                            text=page.page_text,
                         )
                         for page in pages
                     ],
@@ -470,14 +475,18 @@ def save_details(engine: Engine, found: dict[int, Details]) -> None:
                 update(recipes)
                 .where(recipes.c.id == recipe_id, recipes.c.details_by.is_(None))
                 .values(
-                    ingredients=details.ingredients,
-                    method=details.method,
+                    ingredients=_lines(details.ingredients),
+                    method=_lines(details.method),
                     source=details.source,
                     source_url=details.source_url,
                     details_by=details.by,
                     details_confidence=details.confidence,
                 )
             )
+
+
+def _lines(lines: Sequence[Line] | None) -> list[dict[str, Any]] | None:
+    return None if lines is None else [asdict(line) for line in lines]
 
 
 def _insert(

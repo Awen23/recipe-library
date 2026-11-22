@@ -17,6 +17,7 @@ from recipes.pages import (
     USER_AGENT,
     Page,
     PageFetcher,
+    page_text,
 )
 
 from fakes import FakeWeb, read_page
@@ -43,8 +44,9 @@ def test_page_without_recipe_data() -> None:
         {"https://a.test/": httpx2.Response(200, headers=HTML, content=NO_RECIPE_HTML)}
     )
 
+    # Its text is kept, for Claude to read a recipe from.
     assert web.fetch("https://a.test/") == Page(
-        "https://a.test/", "https://a.test/", NO_RECIPE, None
+        "https://a.test/", "https://a.test/", NO_RECIPE, None, "Subscribe for recipes"
     )
     assert web.requests[0].headers["user-agent"] == USER_AGENT
 
@@ -162,3 +164,14 @@ def test_does_not_fetch_private_addresses() -> None:
 
     assert [page.outcome for page in pages] == [PRIVATE, PRIVATE]
     assert [str(r.url) for r in web.requests] == ["https://short.test/abc"]
+
+
+def test_page_text_leaves_out_scripts_and_menus() -> None:
+    # Not from the data: a page with a menu, a script and the recipe's lines.
+    html = (
+        "<html><body><nav>Home | Recipes</nav><script>track()</script>"
+        "<h2>Ingredients</h2><ul><li>1 cup oats</li><li>2 tbsp maple syrup</li></ul>"
+        "<footer>© 2026</footer></body></html>"
+    )
+
+    assert page_text(html) == "Ingredients\n1 cup oats\n2 tbsp maple syrup"

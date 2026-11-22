@@ -28,6 +28,7 @@ def upgrade() -> None:
         sa.Column("fetched_at", sa.DateTime(), nullable=False),
         sa.Column("outcome", sa.String(), nullable=False),
         sa.Column("recipe", sa.JSON(), nullable=True),
+        sa.Column("page_text", sa.Text(), nullable=True),
         sa.ForeignKeyConstraint(
             ["video_id"], ["videos.id"], name=op.f("fk_recipe_links_video_id_videos")
         ),

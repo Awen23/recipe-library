@@ -27,6 +27,7 @@ beautifulsoup4==4.15.0 \
     --hash=sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9
     # via
     #   mf2py
+    #   recipe-library (pyproject.toml)
     #   recipe-scrapers
 certifi==2026.11.20 \
     --hash=sha256:7422df25243767b9877031a2248cb14d09ddac9beee846f4cef3d5c9191d488f \
