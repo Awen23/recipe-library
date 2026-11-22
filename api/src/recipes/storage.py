@@ -7,7 +7,7 @@ Its tables are created by the migrations in `migrations/`: run `alembic upgrade 
 
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -39,6 +39,8 @@ from sqlalchemy import (
 
 from recipes.ai import VideoText
 from recipes.chapters import Chapter, parse_chapters
+from recipes.links import Link, find_links
+from recipes.pages import Page
 from recipes.playlist import Playlist
 from recipes.splitting import Recipe
 from recipes.youtube import Comment, Video
@@ -330,6 +332,59 @@ def save_recipes(engine: Engine, video_id: str, found: Sequence[Recipe]) -> None
                     "start_by": recipe.start_by,
                 }
                 for recipe in found
+            ],
+        )
+
+
+def videos_to_fetch_pages(engine: Engine) -> list[tuple[str, list[Link]]]:
+    """The live videos whose links haven't been fetched yet, by ID, with their links.
+    Videos with no links are left out."""
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(videos.c.id, videos.c.description)
+            .where(
+                videos.c.removed_at.is_(None),
+                videos.c.id.not_in(select(recipe_pages.c.video_id)),
+            )
+            .order_by(videos.c.first_seen_at, videos.c.id)
+        ).all()
+        comments_by_video: dict[str, list[str]] = {}
+        for comment in connection.execute(
+            select(creator_comments).order_by(creator_comments.c.published_at)
+        ):
+            comments_by_video.setdefault(comment.video_id, []).append(comment.text)
+    found = [
+        (row.id, find_links(row.description, comments_by_video.get(row.id, [])))
+        for row in rows
+    ]
+    return [(video_id, links) for video_id, links in found if links]
+
+
+def save_pages(
+    engine: Engine,
+    video_id: str,
+    fetched: Sequence[tuple[Link, Page]],
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Store what fetching each of a video's links found, in one transaction."""
+    now = now or _utc_now()
+    with engine.begin() as connection:
+        _insert(
+            connection,
+            recipe_pages,
+            [
+                {
+                    "video_id": video_id,
+                    "url": link.url,
+                    "position": position,
+                    "link_text": link.text,
+                    "final_url": page.final_url,
+                    "fetched_at": now,
+                    "outcome": page.outcome,
+                    "recipe": asdict(page.recipe) if page.recipe else None,
+                }
+                for position, (link, page) in enumerate(fetched)
             ],
         )
 

@@ -1,32 +1,14 @@
-from dataclasses import replace
-
 import httpx2
 import pytest
 from sqlalchemy import Engine, select
 
 from recipes.ai import AIKeyError, Claude
 from recipes.building import build_recipes
-from recipes.playlist import Playlist, fetch_playlist
-from recipes.storage import recipes, save_playlist
-from recipes.youtube import YouTubeClient
+from recipes.storage import recipes
 
-from fakes import FakeClaudeApi, FakeYouTubeApi, read_fixture
+from fakes import FakeClaudeApi
 
 MEAL_PREP_ID = "whr7iOKRXTA"  # a meal prep video with five recipes
-
-
-@pytest.fixture
-def fetched(engine: Engine, fake_api: FakeYouTubeApi) -> Engine:
-    """The five fixture videos stored, with full descriptions where there are some."""
-    with YouTubeClient("test-key", transport=fake_api.transport) as client:
-        playlist: Playlist = fetch_playlist(client, "PLAYLIST_ID")
-    descriptions = read_fixture("descriptions.json")
-    full = tuple(
-        replace(video, description=descriptions.get(video.id, video.description))
-        for video in playlist.videos
-    )
-    save_playlist(replace(playlist, videos=full), engine)
-    return engine
 
 
 @pytest.fixture
