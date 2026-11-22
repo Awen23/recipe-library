@@ -142,11 +142,17 @@ recipe_pages = Table(
 
 # Who set a group of recipe fields: plain code, AI, or a correction by hand.
 SET_BY = ("code", "ai", "hand")
+# Where a recipe's written recipe was found.
+SOURCES = ("link", "description", "comment")
+
+
+def _one_of(column: str, allowed: Sequence[str]) -> CheckConstraint:
+    values = ", ".join(f"'{value}'" for value in allowed)
+    return CheckConstraint(f"{column} IN ({values})", name=column)
 
 
 def _set_by(column: str) -> CheckConstraint:
-    allowed = ", ".join(f"'{by}'" for by in SET_BY)
-    return CheckConstraint(f"{column} IN ({allowed})", name=column)
+    return _one_of(column, SET_BY)
 
 
 # The tables below are worked out from the fetched ones, by code and by AI.
@@ -169,11 +175,11 @@ recipes = Table(
     # Where the recipe starts in the video. Null when it isn't known.
     Column("start_seconds", Integer, nullable=True),
     Column("start_by", String, nullable=False),
-    # The written recipe, and where it came from. All null until a build finds one,
-    # and a build only fills them while `source` is null.
+    # The written recipe, and where it came from. A build looks for them once, and
+    # `details_by` says who looked. The rest stay null when nothing was found.
     Column("ingredients", _JSON, nullable=True),  # list of lines, such as "1 cup oats"
     Column("method", _JSON, nullable=True),  # list of steps
-    Column("source", String, nullable=True),  # where it was found: "link"
+    Column("source", String, nullable=True),  # "link", "description" or "comment"
     Column("source_url", String, nullable=True),  # the page, when it's from a link
     Column("details_by", String, nullable=True),
     Column("details_confidence", Integer, nullable=True),  # 0-100, how sure
@@ -184,7 +190,7 @@ recipes = Table(
     _set_by("name_by"),
     _set_by("start_by"),
     _set_by("details_by"),
-    CheckConstraint("source IN ('link')", name="source"),
+    _one_of("source", SOURCES),
     sqlite_autoincrement=True,  # what keeps `id`s from being reused
 )
 
@@ -285,38 +291,53 @@ def videos_to_build(engine: Engine) -> list[tuple[str, VideoText]]:
     about each. They're the ones with no recipes, since building gives every video
     at least one."""
     with engine.connect() as connection:
-        rows = connection.execute(
-            select(videos.c.id, videos.c.title, videos.c.description)
-            .where(
-                videos.c.removed_at.is_(None),
-                videos.c.id.not_in(select(recipes.c.video_id)),
+        video_ids = list(
+            connection.scalars(
+                select(videos.c.id)
+                .where(
+                    videos.c.removed_at.is_(None),
+                    videos.c.id.not_in(select(recipes.c.video_id)),
+                )
+                .order_by(videos.c.first_seen_at, videos.c.id)
             )
-            .order_by(videos.c.first_seen_at, videos.c.id)
-        ).all()
-        chapters_by_video: dict[str, list[Chapter]] = {}
-        for chapter in connection.execute(
-            select(chapters).order_by(chapters.c.video_id, chapters.c.position)
-        ):
-            chapters_by_video.setdefault(chapter.video_id, []).append(
-                Chapter(chapter.start_seconds, chapter.title)
-            )
-        comments_by_video: dict[str, list[str]] = {}
-        for comment in connection.execute(
-            select(creator_comments).order_by(creator_comments.c.published_at)
-        ):
-            comments_by_video.setdefault(comment.video_id, []).append(comment.text)
-    return [
-        (
-            row.id,
-            VideoText(
-                title=row.title,
-                description=row.description,
-                chapters=chapters_by_video.get(row.id, []),
-                creator_comments=comments_by_video.get(row.id, []),
-            ),
         )
-        for row in rows
-    ]
+        texts = _video_texts(connection, video_ids)
+    return [(video_id, texts[video_id]) for video_id in video_ids]
+
+
+def _video_texts(
+    connection: sqlalchemy.Connection, video_ids: Sequence[str]
+) -> dict[str, VideoText]:
+    """What Claude is shown about each video, by ID."""
+    chapters_by_video: dict[str, list[Chapter]] = {}
+    for chapter in connection.execute(
+        select(chapters)
+        .where(chapters.c.video_id.in_(video_ids))
+        .order_by(chapters.c.video_id, chapters.c.position)
+    ):
+        chapters_by_video.setdefault(chapter.video_id, []).append(
+            Chapter(chapter.start_seconds, chapter.title)
+        )
+    comments_by_video: dict[str, list[str]] = {}
+    for comment in connection.execute(
+        select(creator_comments)
+        .where(creator_comments.c.video_id.in_(video_ids))
+        .order_by(creator_comments.c.published_at)
+    ):
+        comments_by_video.setdefault(comment.video_id, []).append(comment.text)
+    return {
+        row.id: VideoText(
+            title=row.title,
+            description=row.description,
+            chapters=chapters_by_video.get(row.id, []),
+            creator_comments=comments_by_video.get(row.id, []),
+        )
+        for row in connection.execute(
+            select(videos.c.id, videos.c.title, videos.c.description).where(
+                videos.c.id.in_(video_ids)
+            )
+        )
+    }
 
 
 def save_recipes(engine: Engine, video_id: str, found: Sequence[Recipe]) -> None:
@@ -402,7 +423,7 @@ class RecipeName:
 
 @dataclass(frozen=True)
 class StoredPage:
-    """A fetched link, as `matching` needs it."""
+    """A fetched link, as working out details needs it."""
 
     url: str  # where it led, or as written when it didn't answer
     link_text: str
@@ -412,34 +433,37 @@ class StoredPage:
 
 @dataclass(frozen=True)
 class VideoToFill:
-    """A video with recipes that have no details yet, and its fetched pages."""
+    """A video with recipes whose details haven't been looked for, with what it
+    holds."""
 
     id: str
+    text: VideoText
     recipes: list[RecipeName]  # every recipe in the video, in order
-    to_fill: set[int]  # the IDs of those with no details yet
+    to_fill: set[int]  # the IDs of those whose details haven't been looked for
     pages: list[StoredPage]  # in the order the links are written
 
 
 def videos_to_fill(engine: Engine) -> list[VideoToFill]:
-    """The live videos that have fetched pages and a recipe with no details."""
+    """The live videos with a recipe whose details haven't been looked for. A video
+    with links is left out until its links have been fetched."""
+    unfetched = {video_id for video_id, _ in videos_to_fetch_pages(engine)}
     with engine.connect() as connection:
-        video_ids = list(
-            connection.scalars(
+        video_ids = [
+            video_id
+            for video_id in connection.scalars(
                 select(recipes.c.video_id)
                 .distinct()
                 .join(videos, videos.c.id == recipes.c.video_id)
-                .where(
-                    recipes.c.source.is_(None),
-                    videos.c.removed_at.is_(None),
-                    recipes.c.video_id.in_(select(recipe_pages.c.video_id)),
-                )
+                .where(recipes.c.details_by.is_(None), videos.c.removed_at.is_(None))
                 .order_by(recipes.c.video_id)
             )
-        )
+            if video_id not in unfetched
+        ]
+        texts = _video_texts(connection, video_ids)
         result = []
         for video_id in video_ids:
             rows = connection.execute(
-                select(recipes.c.id, recipes.c.name, recipes.c.source)
+                select(recipes.c.id, recipes.c.name, recipes.c.details_by)
                 .where(recipes.c.video_id == video_id)
                 .order_by(recipes.c.position)
             ).all()
@@ -451,8 +475,9 @@ def videos_to_fill(engine: Engine) -> list[VideoToFill]:
             result.append(
                 VideoToFill(
                     id=video_id,
+                    text=texts[video_id],
                     recipes=[RecipeName(row.id, row.name) for row in rows],
-                    to_fill={row.id for row in rows if row.source is None},
+                    to_fill={row.id for row in rows if row.details_by is None},
                     pages=[
                         StoredPage(
                             url=page.final_url or page.url,
@@ -469,28 +494,31 @@ def videos_to_fill(engine: Engine) -> list[VideoToFill]:
 
 @dataclass(frozen=True)
 class Details:
-    """A recipe's written recipe, and where it came from."""
+    """What looking for a recipe's written recipe found. All but `by` are None when
+    nothing was found."""
 
-    source_url: str
-    ingredients: list[str] | None  # None when the page is only a place to look
-    method: list[str] | None
-    confidence: int | None  # 0-100, when it was matched by name
+    by: str  # who looked: "code" or "ai"
+    source: str | None = None  # "link", "description" or "comment"
+    source_url: str | None = None  # the page, when it's from a link
+    ingredients: list[str] | None = None  # None for a page that's a place to look
+    method: list[str] | None = None
+    confidence: int | None = None  # 0-100, when AI decided
 
 
 def save_details(engine: Engine, found: dict[int, Details]) -> None:
-    """Fill in recipes' details, by recipe ID, in one transaction. A recipe that
-    already has details is left as it is."""
+    """Store what was found for each recipe, by ID, in one transaction. A recipe
+    whose details have already been looked for is left as it is."""
     with engine.begin() as connection:
         for recipe_id, details in found.items():
             connection.execute(
                 update(recipes)
-                .where(recipes.c.id == recipe_id, recipes.c.source.is_(None))
+                .where(recipes.c.id == recipe_id, recipes.c.details_by.is_(None))
                 .values(
                     ingredients=details.ingredients,
                     method=details.method,
-                    source="link",
+                    source=details.source,
                     source_url=details.source_url,
-                    details_by="code",
+                    details_by=details.by,
                     details_confidence=details.confidence,
                 )
             )

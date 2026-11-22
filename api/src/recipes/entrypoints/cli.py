@@ -31,8 +31,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     build = commands.add_parser(
         "build",
-        help="split new videos into recipes, asking Claude, and fill in recipes "
-        "from the pages they link to",
+        help="split new videos into recipes, and find each one's ingredients and "
+        "method, asking Claude",
     )
     build.set_defaults(run=_build)
 
@@ -87,6 +87,7 @@ def _build(_args: argparse.Namespace) -> int:
     try:
         with Claude(api_key) as claude:
             summary = build_recipes(engine, claude)
+            details = fill_details(engine, claude)
     except AIKeyError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -95,12 +96,17 @@ def _build(_args: argparse.Namespace) -> int:
         f"Built {summary.recipes} recipes from {summary.videos} new videos "
         f"({summary.input_tokens} input and {summary.output_tokens} output tokens)."
     )
-    print(f"Filled in {fill_details(engine)} recipes from the pages videos link to.")
-    for video_id, reason in summary.failed.items():
+    print(
+        f"Looked for the written recipes in {details.videos} videos, asking Claude "
+        f"about {details.asked}, and found ingredients for {details.found} recipes "
+        f"({details.input_tokens} input and {details.output_tokens} output tokens)."
+    )
+    failed = summary.failed | details.failed
+    for video_id, reason in failed.items():
         print(
             f"error: {video_id}: {reason}. Run `recipes build` again.", file=sys.stderr
         )
-    return 1 if summary.failed else 0
+    return 1 if failed else 0
 
 
 def _secret(name: str) -> str | None:

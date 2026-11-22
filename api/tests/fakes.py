@@ -7,7 +7,7 @@ from typing import Any
 
 import httpx2
 
-from recipes.ai import VideoAnswer
+from recipes.ai import DETAILS_PROMPT, DetailsAnswer, VideoAnswer
 from recipes.pages import Page, PageFetcher
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -15,6 +15,12 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def read_fixture(name: str) -> Any:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def recorded_details(video_id: str) -> DetailsAnswer:
+    """Claude's real details answer for a video, from `claude_details_replies.json`."""
+    reply = read_fixture("claude_details_replies.json")[video_id]
+    return DetailsAnswer.model_validate_json(reply["content"][0]["text"])
 
 
 def read_page(name: str) -> str:
@@ -62,9 +68,10 @@ class FakeYouTubeApi:
 class FakeClaudeApi:
     """A stand-in for the Claude Messages API, and records each request.
 
-    It answers with Claude's real replies in `claude_replies.json`, picked by the
-    title in the request, for the five videos in `videos.json`. Each reply was
-    recorded for the video's full description, chapters and creator comments.
+    It answers with Claude's real replies, picked by the title in the request: from
+    `claude_replies.json` when asked for a video's recipes (all five videos in
+    `videos.json`), and from `claude_details_replies.json` when asked for their
+    details (the two videos plain code can't settle).
     Responses put in `queue` are served first, in order.
     """
 
@@ -73,18 +80,24 @@ class FakeClaudeApi:
         self.queue: list[httpx2.Response] = []
         self.transport = httpx2.MockTransport(self._handle)
         replies = read_fixture("claude_replies.json")
-        self._replies = {
-            item["snippet"]["title"]: replies[item["id"]]
-            for item in read_fixture("videos.json")["items"]
+        details = read_fixture("claude_details_replies.json")
+        videos = read_fixture("videos.json")["items"]
+        self._replies = {v["snippet"]["title"]: replies[v["id"]] for v in videos}
+        self._details = {
+            v["snippet"]["title"]: details[v["id"]]
+            for v in videos
+            if v["id"] in details
         }
 
     def _handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         if self.queue:
             return self.queue.pop(0)
-        message = json.loads(request.content)["messages"][0]["content"]
+        body = json.loads(request.content)
+        message = body["messages"][0]["content"]
         title = message.split("<title>", 1)[1].split("</title>", 1)[0]
-        return httpx2.Response(200, json=self._replies[title])
+        replies = self._details if body["system"] == DETAILS_PROMPT else self._replies
+        return httpx2.Response(200, json=replies[title])
 
 
 def recorded_answer(video_id: str) -> VideoAnswer:

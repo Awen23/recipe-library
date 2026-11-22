@@ -1,8 +1,8 @@
-"""Work out the recipes in fetched videos: ask Claude, split, store. Then fill in
-their written recipes from the pages the videos link to.
+"""Work out the recipes in fetched videos: ask Claude, split, store. Then find each
+recipe's written recipe, in a linked page, the description or a creator comment.
 
-Only videos fetched since the last build are split, and only recipes with no details
-are filled in, so recipes already in use are never changed.
+Only videos fetched since the last build are split, and each recipe's written recipe
+is only looked for once, so recipes already in use are never changed.
 """
 
 from dataclasses import dataclass, field
@@ -11,7 +11,7 @@ from sqlalchemy import Engine
 
 from recipes import storage
 from recipes.ai import AIError, AIKeyError, Claude
-from recipes.matching import match_video
+from recipes.details import from_answer, links_for_claude, plain_details, readable_pages
 from recipes.splitting import split_video
 
 
@@ -51,12 +51,40 @@ def build_recipes(engine: Engine, claude: Claude) -> BuildSummary:
     return summary
 
 
-def fill_details(engine: Engine) -> int:
-    """Give recipes with no details the written recipe their video's pages hold, and
-    return how many were filled."""
-    filled = 0
+@dataclass
+class DetailsSummary:
+    """What looking for recipes' written recipes did."""
+
+    videos: int = 0  # videos looked at
+    asked: int = 0  # of those, the ones Claude was asked about
+    found: int = 0  # recipes given ingredients
+    failed: dict[str, str] = field(default_factory=dict)  # video ID: why
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+def fill_details(engine: Engine, claude: Claude) -> DetailsSummary:
+    """Look for the written recipe of each recipe that hasn't been looked at, and
+    store what's found, video by video. A video Claude can't answer about is left
+    for the next build. A rejected API key stops the build."""
+    summary = DetailsSummary()
     for video in storage.videos_to_fill(engine):
-        found = match_video(video)
+        found = plain_details(video)
+        if found is None:
+            pages = readable_pages(video)
+            names = [recipe.name for recipe in video.recipes]
+            try:
+                reply = claude.find_details(video.text, names, links_for_claude(pages))
+            except AIKeyError:
+                raise
+            except AIError as error:
+                summary.failed[video.id] = str(error)
+                continue
+            found = from_answer(video, pages, reply.answer)
+            summary.asked += 1
+            summary.input_tokens += reply.input_tokens
+            summary.output_tokens += reply.output_tokens
         storage.save_details(engine, found)
-        filled += len(found)
-    return filled
+        summary.videos += 1
+        summary.found += sum(d.ingredients is not None for d in found.values())
+    return summary

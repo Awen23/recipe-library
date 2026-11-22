@@ -47,7 +47,7 @@ def upgrade() -> None:
             op.f("ck_recipes_details_by"), "details_by IN ('code', 'ai', 'hand')"
         )
         batch_op.create_check_constraint(
-            op.f("ck_recipes_source"), "source IN ('link')"
+            op.f("ck_recipes_source"), "source IN ('link', 'description', 'comment')"
         )
 
 

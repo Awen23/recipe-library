@@ -1,0 +1,38 @@
+{
+ "nHr9LqK3PKc": {
+  "id": "msg_011ChJCrHe9Z7rwPpmVsdNxF",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [
+   {
+    "type": "text",
+    "text": "{\"recipes\":[{\"recipe\":0,\"source\":\"link\",\"link\":0,\"ingredients\":[],\"method\":[],\"confidence\":85},{\"recipe\":1,\"source\":\"description\",\"link\":null,\"ingredients\":[\"400g firm tofu (14oz)\",\"1 medium sized onion, minced\",\"1-2 cloves garlic, minced\",\"1⁄2 cup quick cooking oats (45g)\",\"1 tbsp yellow mustard\",\"1-2 tbsp soy sauce\",\"1 tbsp white wine vinegar\",\"salt, pepper to taste\",\"2 tbsp cornstarch\",\"a few tbsp vegetable oil for frying\"],\"method\":[],\"confidence\":90},{\"recipe\":2,\"source\":\"description\",\"link\":null,\"ingredients\":[\"180g quick cooking oats (2 cups)\",\"1 ½ tbsp ground flax seeds\",\"60g all-purpose flour (½ cup)\",\"1 tsp baking powder\",\"½ tsp salt\",\"¼ tsp cinnamon\",\"50g coconut oil, melted (3 ½ tbsp measured cold)\",\"2 ½ tbsp applesauce\",\"1 tsp vanilla extract or a few drops vanilla aroma\",\"3 tbsp maple syrup\",\"1 tbsp white wine vinegar (think i forgot to mention!?)\",\"210 g frozen raspberries (1 ⅓ cups)\",\"1 tbsp lemon juice\",\"2 tbsp maple syrup\",\"1 tsp cornstarch mixed into 3 tbsp water\"],\"method\":[],\"confidence\":90},{\"recipe\":3,\"source\":\"description\",\"link\":null,\"ingredients\":[\"2 tbsp olive oil\",\"½ tsp chili powder* (or to taste)\",\"½ tsp garlic powder\",\"¼ tsp black pepper\",\"½ tsp cumin\",\"½ tsp coriander\",\"80g tomato paste (⅓ cup plus 1 tsp)\",\"1-2 tsp syrup or sugar\",\"2 tbsp flour\",\"1 ⅓ cup vegetable broth (330ml), more if needed\",\"1 onion\",\"1 leek\",\"300g smoked tofu (10,6oz)\",\"1-2 tbsp oil for the pan\",\"¼ cup white wine/soju/vegetable broth for deglazing\",\"1-2 tbsp soy sauce\",\"6-8 small to medium tortillas\",\"150g vegan cheese (5.3oz)\",\"1 can black beans (14oz = 400g)\"],\"method\":[],\"confidence\":88},{\"recipe\":4,\"source\":\"description\",\"link\":null,\"ingredients\":[\"1 cup oats, (90g)\",\"¼ cup (60ml) agave or maple syrup, if needed 1-2 more tsp\",\"1 tsp vanilla or a few drops aroma\",\"¼ tsp salt\",\"1 can white beans, (400g = 14oz)\",\"2 ½ tbsp vegan butter, melted (measured cold)\",\"2-3 tbsp non dairy milk\",\"¼  - 1/3 cup chocolate chips  (40-50g)\"],\"method\":[],\"confidence\":90},{\"recipe\":5,\"source\":\"description\",\"link\":null,\"ingredients\":[\"2 cups water (500ml)\",\"2 tbsp agave syrup\",\"2 tbsp olive oil to be added to the water\",\"2 1/2 teaspoons active dry yeast\",\"630g all-purpose flour or bread flour (5 ¼ cups)\",\"3 tsp salt\",\"2 tbsp of olive oil to grease your baking tins with\",\"2 tbsp of olive oil to be added on top of the dough before baking (1 tbsp per pan)\",\"a generous sprinkle of flakey sea salt\"],\"method\":[\"BAKE for 25-30 Minutes in a preheated oven at 190C\"],\"confidence\":88}],\"note\":\"Recipe 0 is matched to the linked West African Peanut Stew page by dish, and the description's ingredient lists for recipes 1 to 5 are used.\"}"
+   }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+   "input_tokens": 3905,
+   "output_tokens": 2460
+  }
+ },
+ "whr7iOKRXTA": {
+  "id": "msg_011ChJCryR3qdVzsFRpFK9Eb",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [
+   {
+    "type": "text",
+    "text": "{\"recipes\":[{\"recipe\":0,\"source\":\"description\",\"link\":null,\"ingredients\":[\"1 + 1/2 cups oats\",\"1/2 cup chia seeds\",\"1/4 cup vegan vanilla protein powder (I use Raw by Amazonia)\",\"2 cups soy milk\",\"1 cup soy yoghurt\",\"3 tbsp maple syrup\",\"1 tbsp vanilla extract\"],\"method\":[],\"confidence\":90},{\"recipe\":1,\"source\":\"description\",\"link\":null,\"ingredients\":[\"1 cup raw cashews, soaked in boiling water for 15 mins and then drained\",\"2 tsp veggie stock powder\",\"2 tsp smoked paprika\",\"1 tsp dried cumin\",\"3 tbsp nutritional yeast\",\"2 tbsp sriracha\",\"2 tsp lemon juice\",\"1/4 cup water + more if needed (adjust as you go)\",\"1 cucumber, finely chopped\",\"2 tomatoes, finely chopped\",\"pinch of salt & pepper\",\"1 tsp olive oil\",\"1 tsp olive oil\",\"1 x 400g can black beans, drained and rinsed\",\"1 x 400g can corn kernels, drained and rinsed\",\"1 tsp smoked paprika\",\"1 tsp dried cumin\",\"pinch of salt & pepper\",\"pickled onions\",\"cos lettuce\"],\"method\":[],\"confidence\":90},{\"recipe\":2,\"source\":\"description\",\"link\":null,\"ingredients\":[\"500g firm tofu, torn into chunks\",\"2 tbsp corn flour\",\"1 tbsp olive oil, for frying the tofu\",\"1 head of broccoli, cut into florets\",\"2 handfuls of green beans, ends cut off\",\"sesame seeds, sprinkled on top\",\"1 tbsp olive oil\",\"1/3 cup soy sauce\",\"1/4 cup lemon juice\",\"4 cloves of garlic, crushed\"],\"method\":[],\"confidence\":90},{\"recipe\":3,\"source\":\"description\",\"link\":null,\"ingredients\":[\"200g TVP (textured vegetable protein)\",\"2 tsp vegan beef stock powder\",\"2 tsp smoked paprika\",\"1 tsp dried oregano\",\"1/2 tsp dried chilli powder\",\"2 cups boiling water\",\"1 tbsp olive oil\",\"1 brown onion, diced\",\"3 garlic cloves, finely diced\",\"all of the \\\"mince\\\"\",\"1 x 400g can crushed tomatoes\",\"1 cup passata\",\"1 cup water\",\"2 tsp veggie stock powder\",\"1 tsp white sugar\",\"salt and pepper, to taste\",\"2 tbsp vegan butter\",\"2 tbsp plain flour\",\"2 + 1/2 cups soy milk\",\"1/4 cup nutritional yeast\",\"1 tbsp white miso paste\",\"salt and pepper, to taste\",\"1 zucchini, finely sliced into rectangles\",\"200g fresh spinach\",\"250g lasagne sheets\"],\"method\":[],\"confidence\":90},{\"recipe\":4,\"source\":\"description\",\"link\":null,\"ingredients\":[\"1 cup oats\",\"1 cup plain flour\",\"1/2 cup brown sugar\",\"1 tsp baking soda\",\"2/3 cup melted vegan butter\",\"pinch of salt\",\"250g frozen raspberries\",\"2 tbsp lemon juice\",\"1 tsp vanilla extract\",\"1/2 cup white sugar\",\"2 tbsp corn flour mixed with 3 tbsp water\",\"100g dark chocolate, into chunks\"],\"method\":[],\"confidence\":90}],\"note\":\"\"}"
+   }
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {
+   "input_tokens": 3614,
+   "output_tokens": 2729
+  }
+ }
+}
