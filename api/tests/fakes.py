@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx2
 
+from recipes.ai import VideoAnswer
+
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
@@ -76,3 +78,9 @@ class FakeClaudeApi:
         message = json.loads(request.content)["messages"][0]["content"]
         title = message.split("<title>", 1)[1].split("</title>", 1)[0]
         return httpx2.Response(200, json=self._replies[title])
+
+
+def recorded_answer(video_id: str) -> VideoAnswer:
+    """Claude's real answer for a video in `videos.json`, from `claude_replies.json`."""
+    reply = read_fixture("claude_replies.json")[video_id]
+    return VideoAnswer.model_validate_json(reply["content"][0]["text"])
