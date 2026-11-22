@@ -88,22 +88,15 @@ def test_a_refusal_leaves_no_answer(fake_claude: FakeClaudeApi) -> None:
     assert (reply.answer, reply.stop_reason) == (None, "refusal")
 
 
-def test_a_cut_off_answer_is_asked_for_again_with_more_room(
-    fake_claude: FakeClaudeApi,
-) -> None:
+def test_a_cut_off_answer_raises_an_ai_error(fake_claude: FakeClaudeApi) -> None:
     """Not from the data: no answer has been cut off, so this reply is made up."""
     cut_off = {**read_fixture("claude_replies.json")["whr7iOKRXTA"]}
     cut_off |= {"content": [{"type": "text", "text": '{"reci'}]}
     cut_off |= {"stop_reason": "max_tokens"}
     fake_claude.queue.append(httpx2.Response(200, json=cut_off))
 
-    reply = find_recipes(fake_claude, whr7())
-
-    assert reply.answer is not None
-    first, second = (json.loads(r.content) for r in fake_claude.requests)
-    assert second["max_tokens"] == first["max_tokens"] * 2
-    # Both requests are paid for, so both are counted.
-    assert (reply.input_tokens, reply.output_tokens) == (3310 * 2, 206 * 2)
+    with pytest.raises(AIError):
+        find_recipes(fake_claude, whr7())
 
 
 def test_an_api_error_raises_an_ai_error(fake_claude: FakeClaudeApi) -> None:

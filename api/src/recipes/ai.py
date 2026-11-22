@@ -14,7 +14,9 @@ from recipes.chapters import Chapter
 
 MODEL = "claude-haiku-5-5"
 EFFORT: Final = "medium"  # `Final` keeps its type `Literal["medium"]`, as the SDK wants
-MAX_TOKENS = 8000  # far more than an answer needs; thinking counts towards it
+# A ceiling, not a cost: only the tokens used are paid for. Answers on the real
+# playlist used at most 1,191, thinking included.
+MAX_TOKENS = 8000
 
 SYSTEM_PROMPT = """\
 You sort cooking videos into recipes for a recipe library. Each message holds one \
@@ -110,38 +112,27 @@ class Claude:
         self._client.close()
 
     def find_recipes(self, video: VideoText) -> Reply:
-        """Ask which recipes `video` teaches.
+        """Ask which recipes `video` teaches."""
+        try:
+            response = self._client.messages.create(
+                model=MODEL,
+                max_tokens=MAX_TOKENS,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": video_prompt(video)}],
+                output_config={"effort": EFFORT, "format": ANSWER_FORMAT},
+            )
+        except anthropic.AuthenticationError as error:
+            raise AIKeyError(str(error)) from error
+        except anthropic.APIError as error:
+            raise AIError(str(error)) from error
 
-        An answer that was cut off, or isn't in the expected shape, is asked for
-        again once, with twice the room. The tokens of both requests are counted.
-        """
-        input_tokens = output_tokens = 0
-        for max_tokens in (MAX_TOKENS, MAX_TOKENS * 2):
-            try:
-                response = self._client.messages.create(
-                    model=MODEL,
-                    max_tokens=max_tokens,
-                    system=SYSTEM_PROMPT,
-                    messages=[{"role": "user", "content": user_message(video)}],
-                    output_config={"effort": EFFORT, "format": ANSWER_FORMAT},
-                )
-            except anthropic.AuthenticationError as error:
-                raise AIKeyError(str(error)) from error
-            except anthropic.APIError as error:
-                raise AIError(str(error)) from error
-            input_tokens += response.usage.input_tokens
-            output_tokens += response.usage.output_tokens
-
-            if response.stop_reason == "refusal":
-                return Reply(None, "refusal", input_tokens, output_tokens)
-            answer = _parse(response) if response.stop_reason == "end_turn" else None
-            if answer is not None:
-                return Reply(
-                    tidy(answer, video), "end_turn", input_tokens, output_tokens
-                )
-        raise AIError(
-            f"no usable answer after asking twice (stopped: {response.stop_reason})"
-        )
+        tokens = (response.usage.input_tokens, response.usage.output_tokens)
+        if response.stop_reason == "refusal":
+            return Reply(None, "refusal", *tokens)
+        answer = _parse(response) if response.stop_reason == "end_turn" else None
+        if answer is None:
+            raise AIError(f"no usable answer (stopped: {response.stop_reason})")
+        return Reply(tidy(answer, video), "end_turn", *tokens)
 
 
 def _parse(response: anthropic.types.Message) -> VideoAnswer | None:
@@ -153,9 +144,10 @@ def _parse(response: anthropic.types.Message) -> VideoAnswer | None:
         return None
 
 
-def user_message(video: VideoText) -> str:
-    """The video as Claude sees it, each part in its own tag. Chapters are numbered
-    from 0, the numbers Claude answers with."""
+def video_prompt(video: VideoText) -> str:
+    """The video as Claude sees it: the message sent after the system prompt, with
+    each part in its own tag. Chapters are numbered from 0, the numbers Claude
+    answers with."""
     chapters = "\n".join(
         f"{number}. [{_timestamp(chapter.start_seconds)}] {chapter.title}"
         for number, chapter in enumerate(video.chapters)
