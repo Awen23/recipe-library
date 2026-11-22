@@ -4,6 +4,7 @@ to work out recipes.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Literal
 
 from recipes.ai import VideoText
@@ -11,6 +12,15 @@ from recipes.recipe_data import PageRecipe
 
 # How interested I am in a recipe, as I rate it by hand.
 Rating = Literal["would_cook", "curious", "not_for_me"]
+
+
+@dataclass(frozen=True)
+class Marks:
+    """A recipe's marks, as I set them by hand. `updated_at` is UTC."""
+
+    rating: Rating | None
+    hidden: bool
+    updated_at: datetime
 
 
 @dataclass(frozen=True)

@@ -10,6 +10,7 @@ requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20",
     "anthropic>=2.12,<3",
+    "fastapi[standard]>=0.165",
     "beautifulsoup4>=4.12",
     "httpx2>=2.16",
     "python-dotenv>=1.2",
@@ -20,6 +21,9 @@ classifiers = ["Private :: Do Not Upload"]
 
 [project.scripts]
 recipes = "recipes.entrypoints.cli:main"  # the `recipes` command
+
+[tool.fastapi]
+entrypoint = "recipes.entrypoints.api:app"  # what `fastapi dev` runs
 
 [dependency-groups]
 dev = [

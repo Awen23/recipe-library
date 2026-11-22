@@ -24,15 +24,6 @@ MONDAY = datetime(2026, 11, 23, 18, 0)
 TUESDAY = datetime(2026, 11, 24, 18, 0)
 
 
-@pytest.fixture
-def built(fetched: Engine) -> Engine:
-    """The five fixture videos split into their recipes, from Claude's real
-    answers."""
-    with Claude("test-key", transport=FakeClaudeApi().transport) as claude:
-        build_recipes(fetched, claude)
-    return fetched
-
-
 def recipe_id(engine: Engine, name: str) -> int:
     with engine.connect() as connection:
         found = connection.scalar(select(recipes.c.id).where(recipes.c.name == name))
@@ -47,12 +38,12 @@ def marks(engine: Engine) -> dict[int, dict[str, Any]]:
         return {row["recipe_id"]: dict(row) for row in rows}
 
 
-def test_rating_a_recipe_stores_the_rating(built: Engine) -> None:
-    oats = recipe_id(built, "Overnight oats")
+def test_rating_a_recipe_stores_the_rating(split: Engine) -> None:
+    oats = recipe_id(split, "Overnight oats")
 
-    rate_recipe(built, oats, "would_cook", now=MONDAY)
+    rate_recipe(split, oats, "would_cook", now=MONDAY)
 
-    assert marks(built) == {
+    assert marks(split) == {
         oats: {
             "recipe_id": oats,
             "rating": "would_cook",
@@ -62,82 +53,82 @@ def test_rating_a_recipe_stores_the_rating(built: Engine) -> None:
     }
 
 
-def test_rating_again_changes_the_rating(built: Engine) -> None:
-    oats = recipe_id(built, "Overnight oats")
-    rate_recipe(built, oats, "would_cook", now=MONDAY)
+def test_rating_again_changes_the_rating(split: Engine) -> None:
+    oats = recipe_id(split, "Overnight oats")
+    rate_recipe(split, oats, "would_cook", now=MONDAY)
 
-    rate_recipe(built, oats, "curious", now=TUESDAY)
+    rate_recipe(split, oats, "curious", now=TUESDAY)
 
-    assert (marks(built)[oats]["rating"], marks(built)[oats]["updated_at"]) == (
+    assert (marks(split)[oats]["rating"], marks(split)[oats]["updated_at"]) == (
         "curious",
         TUESDAY,
     )
 
 
-def test_a_rating_can_be_cleared(built: Engine) -> None:
-    oats = recipe_id(built, "Overnight oats")
-    rate_recipe(built, oats, "not_for_me")
+def test_a_rating_can_be_cleared(split: Engine) -> None:
+    oats = recipe_id(split, "Overnight oats")
+    rate_recipe(split, oats, "not_for_me")
 
-    rate_recipe(built, oats, None)
+    rate_recipe(split, oats, None)
 
-    assert marks(built)[oats]["rating"] is None
+    assert marks(split)[oats]["rating"] is None
 
 
-def test_hiding_a_recipe_keeps_its_rating(built: Engine) -> None:
-    bars = recipe_id(built, "Raspberry oat bars")
-    rate_recipe(built, bars, "curious")
+def test_hiding_a_recipe_keeps_its_rating(split: Engine) -> None:
+    bars = recipe_id(split, "Raspberry oat bars")
+    rate_recipe(split, bars, "curious")
 
-    hide_recipe(built, bars)
+    hide_recipe(split, bars)
 
-    assert (marks(built)[bars]["rating"], marks(built)[bars]["hidden"]) == (
+    assert (marks(split)[bars]["rating"], marks(split)[bars]["hidden"]) == (
         "curious",
         True,
     )
 
 
-def test_a_hidden_recipe_can_be_shown_again(built: Engine) -> None:
-    bars = recipe_id(built, "Raspberry oat bars")
-    hide_recipe(built, bars)
+def test_a_hidden_recipe_can_be_shown_again(split: Engine) -> None:
+    bars = recipe_id(split, "Raspberry oat bars")
+    hide_recipe(split, bars)
 
-    hide_recipe(built, bars, hidden=False)
+    hide_recipe(split, bars, hidden=False)
 
-    assert marks(built)[bars]["hidden"] is False
+    assert marks(split)[bars]["hidden"] is False
 
 
-def test_marking_one_recipe_leaves_the_others_unmarked(built: Engine) -> None:
+def test_marking_one_recipe_leaves_the_others_unmarked(split: Engine) -> None:
     # The meal prep video's other four recipes have no row, so they're unrated and
     # shown.
-    hide_recipe(built, recipe_id(built, "Hearty vegan lasagne"))
+    hide_recipe(split, recipe_id(split, "Hearty vegan lasagne"))
 
-    assert len(marks(built)) == 1
+    assert len(marks(split)) == 1
 
 
-def test_a_recipe_that_isnt_stored_cant_be_marked(built: Engine) -> None:
+def test_a_recipe_that_isnt_stored_cant_be_marked(split: Engine) -> None:
     """Not from the data: an ID no recipe has."""
     with pytest.raises(NoSuchRecipeError):
-        rate_recipe(built, 9999, "would_cook")
+        rate_recipe(split, 9999, "would_cook")
 
-    assert marks(built) == {}
+    assert marks(split) == {}
 
 
-def test_marks_survive_building_again(built: Engine) -> None:
-    oats = recipe_id(built, "Overnight oats")
-    rate_recipe(built, oats, "would_cook", now=MONDAY)
-    hide_recipe(built, oats, now=MONDAY)
-    before = marks(built)
+def test_marks_survive_building_again(split: Engine) -> None:
+    oats = recipe_id(split, "Overnight oats")
+    rate_recipe(split, oats, "would_cook", now=MONDAY)
+    hide_recipe(split, oats, now=MONDAY)
+    before = marks(split)
 
     # The same steps as `recipes build`: recipes, then their details.
     with Claude("test-key", transport=FakeClaudeApi().transport) as claude:
-        build_recipes(built, claude)
-        fill_details(built, claude)
+        build_recipes(split, claude)
+        fill_details(split, claude)
 
-    assert marks(built) == before
+    assert marks(split) == before
 
 
-def test_a_rating_must_be_one_of_the_levels(built: Engine) -> None:
+def test_a_rating_must_be_one_of_the_levels(split: Engine) -> None:
     """Not from the data: checks the rule in the table, with a made-up rating."""
-    oats = recipe_id(built, "Overnight oats")
+    oats = recipe_id(split, "Overnight oats")
     row = {"recipe_id": oats, "rating": "5 stars", "hidden": False}
 
-    with built.begin() as connection, pytest.raises(IntegrityError):
+    with split.begin() as connection, pytest.raises(IntegrityError):
         connection.execute(insert(recipe_marks).values(**row, updated_at=MONDAY))

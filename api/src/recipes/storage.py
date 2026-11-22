@@ -44,6 +44,7 @@ from recipes.links import Link, find_links
 from recipes.models import (
     Details,
     Line,
+    Marks,
     Rating,
     RecipeName,
     StoredPage,
@@ -519,21 +520,23 @@ def rate_recipe(
     rating: Rating | None,
     *,
     now: datetime | None = None,
-) -> None:
-    """Set how interested I am in a recipe, or clear it with None."""
-    _mark(engine, recipe_id, {"rating": rating}, now or _utc_now())
+) -> Marks:
+    """Set how interested I am in a recipe, or clear it with None. Returns its
+    marks."""
+    return _mark(engine, recipe_id, {"rating": rating}, now or _utc_now())
 
 
 def hide_recipe(
     engine: Engine, recipe_id: int, hidden: bool = True, *, now: datetime | None = None
-) -> None:
-    """Hide a recipe from the library, or show it again with `hidden=False`."""
-    _mark(engine, recipe_id, {"hidden": hidden}, now or _utc_now())
+) -> Marks:
+    """Hide a recipe from the library, or show it again with `hidden=False`.
+    Returns its marks."""
+    return _mark(engine, recipe_id, {"hidden": hidden}, now or _utc_now())
 
 
 def _mark(
     engine: Engine, recipe_id: int, changes: dict[str, Any], now: datetime
-) -> None:
+) -> Marks:
     """Change some of a recipe's marks and leave the rest, adding its row if it has
     none yet: one "upsert", which SQLite and Postgres both write as
     `INSERT ... ON CONFLICT DO UPDATE`. Moving to Postgres swaps `sqlite_insert` for
@@ -548,12 +551,17 @@ def _mark(
         statement = sqlite_insert(recipe_marks).values(
             {**new_row, **changes, "updated_at": now}
         )
-        connection.execute(
+        row = connection.execute(
             statement.on_conflict_do_update(
                 index_elements=[recipe_marks.c.recipe_id],
                 set_={**changes, "updated_at": now},
+            ).returning(
+                recipe_marks.c.rating,
+                recipe_marks.c.hidden,
+                recipe_marks.c.updated_at,
             )
-        )
+        ).one()
+    return Marks(row.rating, row.hidden, row.updated_at)
 
 
 def _lines(lines: Sequence[Line] | None) -> list[dict[str, Any]] | None:

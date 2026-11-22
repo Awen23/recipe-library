@@ -16,7 +16,7 @@ I don't yet know what the data looks like, so the plan starts by finding out. On
 1. **Understand the playlist.** Fetch it, and measure what's actually there: how recipes are split across videos, how Shorts differ, and where recipe details live. *(Done: findings in Section 4.)*
 2. **Useful info for every recipe.** Split each video into its recipes, each with a name, a start time where there is one, and its ingredients and method wherever they can be found. Plain code does what it can, and AI does the parts Phase 1 showed plain code can't. *(Done: Section 5.)*
 3. **Rating, sorting and search.** Everything the UI needs from the data. Hide the recipes in a multi-recipe video that I'm not interested in, and rate my interest in the rest, so the library can be filtered down to what I'd actually cook. Search over names and ingredients, in one function, with searchable ingredient names. Tidy what the library shows, such as videos that aren't recipes. *(Planned in Section 6.)*
-4. **The API.** FastAPI routes to list, search and filter recipes, rate or hide them, and refresh the playlist in the background, with response models that give the frontend its types. Access control, so only I can change ratings or start a refresh. Run locally: nothing is deployed yet.
+4. **The API.** FastAPI routes to refresh the playlist in the background, and for anything Phase 3 didn't add a route for, with response models that give the frontend its types. Access control, so only I can change ratings or start a refresh. Run locally: nothing is deployed yet.
 5. **The UI, deployed.** A React + TypeScript frontend for searching, filtering and rating the library, built on the API. Then the whole app is deployed to Fly.io, with backups of the database.
 
 ## 3. Later
@@ -172,7 +172,7 @@ Everything the UI needs from the data, so Phases 4 and 5 only expose it. I can:
 
 Videos that aren't recipes are left out of what the library shows by default.
 
-There's no command for rating or searching yet: Phase 3 builds and tests the functions, and Phase 4's routes call them.
+Each part comes with its API route, so it's tested the way the UI will use it. Phase 4 adds the rest of the API: refreshing, access control, and the routes for what's already built.
 
 ### How the data is kept
 - **My marks are kept apart from built data,** in their own table, one row per recipe. Building never reads or writes them, and a recipe without a row is unrated and shown.
@@ -183,11 +183,12 @@ There's no command for rating or searching yet: Phase 3 builds and tests the fun
 
 ### PRs
 **1. Ratings and hiding** *(done)*
-- The `recipe_marks` table, and storage functions to rate a recipe (`rate_recipe`, where `None` clears the rating) and hide or show it (`hide_recipe`). Each saves with one upsert (insert, or update if the row exists), and a recipe ID that isn't stored raises `NoSuchRecipeError`, which Phase 4 can turn into a 404.
+- The `recipe_marks` table, and storage functions to rate a recipe (`rate_recipe`, where `None` clears the rating) and hide or show it (`hide_recipe`). Each saves with one upsert (insert, or update if the row exists) and returns the recipe's marks.
+- The API's first routes, in FastAPI: `PUT /recipes/{id}/rating` (`{"rating": "curious"}`, or `null` to clear it) and `PUT /recipes/{id}/hidden` (`{"hidden": true}`). Each answers with the recipe's marks, or 404 for a recipe that isn't stored. The app opens the database when it starts, and won't start if it needs migrating.
 - *Plain code only.*
 
 **2. Finding recipes**
-- One `find_recipes` function: an optional search over names and ingredient lines, the filters and sorts above, and hidden recipes and videos that aren't recipes left out unless asked for.
+- One `find_recipes` function: an optional search over names and ingredient lines, the filters and sorts above, and hidden recipes and videos that aren't recipes left out unless asked for. A `GET /recipes` route calls it.
 - Videos that aren't recipes are marked as such. How (by code, AI or hand) is decided when this PR is planned, from the 19 recipes named after their video.
 
 *Done when:*
