@@ -14,7 +14,7 @@ I don't yet know what the data looks like, so the plan starts by finding out. On
 
 ## 2. Phases
 1. **Understand the playlist.** Fetch it, and measure what's actually there: how recipes are split across videos, how Shorts differ, and where recipe details live. *(Done: findings in Section 4.)*
-2. **Useful info for every recipe.** Turn each video into one entry per recipe, with a name, a start time where there is one, and the recipe's ingredients and method wherever they can be found. Plain code does what it can, and AI does the parts Phase 1 showed plain code can't. *(Planned in Section 5.)*
+2. **Useful info for every recipe.** Split each video into its recipes, each with a name, a start time where there is one, and its ingredients and method wherever they can be found. Plain code does what it can, and AI does the parts Phase 1 showed plain code can't. *(Planned in Section 5.)*
 3. **Rating and sorting.** Hide the recipes in a multi-recipe video that I'm not interested in, and rate my interest in the rest, so the library can be filtered down to what I'd actually cook.
 4. **The UI.** A deployed web app (Python API, React + TypeScript frontend) for searching, filtering and rating the library.
 
@@ -87,55 +87,71 @@ Counts are from the 434 available videos. "Shorts" means 3 minutes or less, beca
    - **Plain code can:** fetch creator comments, skip intro and outro chapters, find ingredient lists, and pull out recipe links.
    - **Plain code can't:** tell recipe chapters from step chapters (18 videos), name the dish when the title is clickbait ("EVERYONE can like tofu!"), or find start times for videos with no timestamps in their description (20 videos). The comments often name the dish, and Claude's labels did this well.
 7. **Linked recipe pages often have structured data:** 212 videos link to a page that isn't social media or a shop, checking up to 3 links each. For 119 of them, the page has schema.org `Recipe` data with an ingredient list, and for 100 of those the description has no ingredient list of its own. 74 pages had no recipe data (Substack posts, Google Docs, ebook shops, some blogs), and 19 were blocked or failed.
-8. **Some videos are assemblies, not recipes** (for example a lunch box put together from ready foods). An entry named after the video is enough for these.
+8. **Some videos are assemblies, not recipes** (for example a lunch box put together from ready foods). A recipe named after the video is enough for these.
 
 ## 5. Phase 2: useful info for every recipe
 
 ### Goal
-Every video becomes one or more **entries**, one per recipe, ready for rating (Phase 3) and the UI (Phase 4). Each entry has:
+Every video becomes one or more **recipes**, ready for rating (Phase 3) and the UI (Phase 4). Each recipe has:
 - a name
 - its video
 - a start time, or none if the description has no timestamp for it
-- the recipe itself where it can be found: an **ingredients** list and a **method**
-- the recipe's source: the description, the creator's comment, or a link. When the recipe couldn't be read (an app, a paywall, or a page without recipe data), the link is where to find it.
+- its **details** where they can be found: an **ingredients** list and a **method**
+- where the details came from: the description, the creator's comment, or a link. When they couldn't be read (an app, a paywall, or a page without recipe data), the link is where to find them.
 
-Each video also keeps its **thumbnail** and whether it's a **Short**, for the UI.
+Each video also keeps its **thumbnail**, its **channel**, and whether it can be **embedded** in a page. Whether it's a **Short** is worked out from its length.
 
 ### How the data is kept
-- **Fetched data and entries are kept apart.** Videos, comments and fetched recipe pages are stored as they arrived. Entries are worked out from them, so entries can be rebuilt while developing without fetching again.
-- **Each entry gets an ID when it's created, and keeps it,** so Phase 3's ratings stay attached. Fetching the playlist again only adds entries for new videos, and leaves existing entries alone. A video that leaves the playlist, and its entries, are marked as gone, not deleted.
-- **Each field records where it came from:** plain code, AI (with how sure it was), or a correction I made by hand. Hand corrections always win over code and AI, so a re-run never overwrites them.
-- **The schema is designed once, up front,** with room for everything above, even where later PRs fill it in.
+- **Fetched data and recipes are kept apart.** Videos, comments and fetched recipe pages are stored as they arrived. Recipes are worked out from them, so they can be rebuilt while developing without fetching again.
+- **Fetching again only adds new videos.** Stored videos are left as they are. A video that leaves the playlist is marked as removed, not deleted, and so are its recipes.
+- **Each recipe gets an ID when it's created, and keeps it,** so Phase 3's ratings stay attached.
+- **Each field records who set it:** plain code, AI (with how sure it was), or a correction I made by hand. Hand corrections always win, so a re-run never overwrites them.
+- **The tables are designed up front, and each PR creates the ones it fills,** with an Alembic migration. All database access goes through `storage.py`.
+
+### Tables
+Fetched, created in PR 1:
+- **`channels`:** YouTube's channel ID and the channel's title.
+- **`videos`:** the title, description, length, publish date, thumbnail, whether it can be embedded, its channel, when it was first seen, and when it was removed from the playlist, if it was.
+- **`chapters`:** each video's chapters in order, parsed from its description.
+- **`creator_comments`:** the comments posted by the video's own channel.
+
+Worked out, created in later PRs:
+- **`recipes`** (PR 2) holds what a recipe card shows:
+  - `id` (never reused), `video_id` and `position` within the video (unique together), and `found_by` (`chapter` or `ai`)
+  - `name`, with `name_by` and `name_confidence`
+  - `start_seconds`, with `start_by`
+  - the details: `ingredients` (a JSON list), `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four
+  - Each `_by` is `code`, `ai` or `hand`. Code and AI skip any group whose `_by` is `hand`.
+- **`recipe_pages`** (PR 3): each linked page as fetched: its URL, where it redirected to, when it was fetched, what was found (such as `recipe`, `no recipe data` or `HTTP 403`), and its schema.org `Recipe` data.
 
 ### PRs
-An outline only. Each PR is planned in detail before it starts, and its architecture decisions are made then, such as how the app talks to SQLite, the migration tool, and which AI model to use. Each PR uses AI where plain code can't do the job, so no PR leaves entries half-right. The first PR to use AI sets it up.
+An outline only. Each PR is planned in detail before it starts, and its architecture decisions are made then, such as which AI model to use. Each PR uses AI where plain code can't do the job, so no PR leaves recipes half-right. The first PR to use AI sets it up.
 
-**1. Fetched data in SQLite**
-- Replace the JSON file with SQLite through `storage.py`, using the full schema from "How the data is kept".
-- Store the videos (with their thumbnail and whether they're a Short) and their chapters.
-- `recipes` also fetches each video's top comments, and stores the ones by the video's own channel.
+**1. Fetched data in SQLite** *(done)*
+- SQLite through SQLAlchemy Core, with tables created and changed by Alembic migrations.
+- `recipes <playlist-id>` stores new videos with their channels, chapters and creator comments, and marks videos that have left the playlist as removed.
 - *Plain code only.*
 
-**2. Entries**
-- **Plain code:** split videos at their chapters, give videos without chapters one entry, and use chapter titles as names.
+**2. Recipes**
+- **Plain code:** split videos at their chapters, give videos without chapters one recipe, and use chapter titles as names.
 - **AI:**
-  - Check every video with chapters, deciding which chapters are recipes and which are steps or padding (such as "make the toppings" or "errands interlude"). Some single-recipe videos have step chapters.
+  - Check every video with chapters, deciding which chapters are recipes and which are steps or padding (such as "make the toppings" or "errands interlude"). Some single-recipe videos have step chapters, and some chapters hold several recipes.
   - Count and name the recipes in multi-recipe videos with no timestamps.
-  - Name every entry that has no chapter title, using the video title, the description and the creator's comment.
+  - Name every recipe that has no chapter title, using the video title, the description and the creator's comment.
 
-PRs 3 and 4 look for each entry's recipe one place at a time, most common first, and stop at the first place that has its ingredients. Linked pages come first: they're the most common source, and reading them needs no AI.
+PRs 3 and 4 look for each recipe's details one place at a time, most common first, and stop at the first place that has its ingredients. Linked pages come first: they're the most common source, and reading them needs no AI.
 
-**3. Recipes from links**
-- **Plain code:** fetch each linked page that isn't social media or a shop, and read its schema.org `Recipe` data (`recipeIngredient`, `recipeInstructions`).
+**3. Details from links**
+- **Plain code:** fetch each linked page that isn't social media or a shop, keep it in `recipe_pages`, and read its schema.org `Recipe` data (`recipeIngredient`, `recipeInstructions`).
 
-**4. Recipes from text**
-For entries still without a recipe:
+**4. Details from text**
+For recipes still without details:
 - **Plain code:** skip any text with no ingredient-like lines (amounts such as "2 tbsp" or "400g", or an "Ingredients" heading), so AI only reads text that's likely to hold a recipe.
 - **AI:** find the ingredients and method in the description first, then in the creator's comment. This covers matching them to the right recipe when one description covers several, leaving out lines that aren't ingredients ("Save 10% on…"), and tidying lines such as "1-2 leeks, chopped or a few handfuls spinach" into ingredient names that can be searched.
 
 *Done when:* the numbers roughly match what Phase 1 found, so anything the code misses shows up.
-- **Entries:** about 740, and every available video has at least one.
+- **Recipes:** about 740, and every available video has at least one.
 - **Ingredients:** found for about as many videos as Phase 1 found, from each source: about 120 from descriptions, 60 from creator comments and 120 from linked pages.
 - **Agreement:** on a random sample of 30 videos, the number of recipes matches the exploration labels in `api/data/exploration/` for at least 27.
-- **Fetching again:** keeps every entry's ID, and leaves hand corrections untouched.
+- **Fetching again:** keeps every recipe's ID, and leaves hand corrections untouched.
 - **AI-made fields** are marked as AI-made, and the tests pass.

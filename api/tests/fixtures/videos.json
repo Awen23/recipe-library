@@ -7,10 +7,19 @@
         "publishedAt": "2025-06-17T08:39:43Z",
         "title": "Plant-based meal prep for the week (SUPER tasty vegan recipes) 🥯",
         "description": "Hi friends, welcome back to another meal prep video!! This one was arguably my best meal prep yet, and I hope you enjoy ☺️",
-        "channelTitle": "Amanda Ducks"
+        "channelId": "UCS_S4EpORZwt8x9r6Mvjs7Q",
+        "channelTitle": "Amanda Ducks",
+        "thumbnails": {
+          "medium": {
+            "url": "https://i.ytimg.com/vi/whr7iOKRXTA/mqdefault.jpg"
+          }
+        }
       },
       "contentDetails": {
         "duration": "PT19M17S"
+      },
+      "status": {
+        "embeddable": true
       }
     },
     {
@@ -19,10 +28,19 @@
         "publishedAt": "2025-04-13T17:30:43Z",
         "title": "6 Meal Prep Ideas for Busy Weeks. (budget friendly, easy & vegan)",
         "description": "✍Written Instructions on my Substack: https://bit.ly/3RflF7w",
-        "channelTitle": "Mina Rome"
+        "channelId": "UCBy9QPDqagPyrdV_01-c9Xw",
+        "channelTitle": "Mina Rome",
+        "thumbnails": {
+          "medium": {
+            "url": "https://i.ytimg.com/vi/nHr9LqK3PKc/mqdefault.jpg"
+          }
+        }
       },
       "contentDetails": {
         "duration": "PT17M42S"
+      },
+      "status": {
+        "embeddable": true
       }
     },
     {
@@ -31,10 +49,19 @@
         "publishedAt": "2022-08-27T14:00:17Z",
         "title": "One bowl, No knead, Spicy Seitan Sausage Recipe. Easy! Pepperoni. Chorizo. Vegan. ヴィーガン・ソーセージ 麵筋香腸",
         "description": "Another easy one bowl seitan recipe.",
-        "channelTitle": "A Japanese Vegan's Kitchen CH"
+        "channelId": "UCMQpTwrdzj29RiZKCc7DCng",
+        "channelTitle": "A Japanese Vegan's Kitchen CH",
+        "thumbnails": {
+          "medium": {
+            "url": "https://i.ytimg.com/vi/eG0tXlljTtI/mqdefault.jpg"
+          }
+        }
       },
       "contentDetails": {
         "duration": "PT7M43S"
+      },
+      "status": {
+        "embeddable": false
       }
     },
     {
@@ -43,10 +70,19 @@
         "publishedAt": "2022-03-16T22:36:39Z",
         "title": "Blueberry Baked Oatmeal (Vegan and Gluten-Free) #shorts",
         "description": "Blueberry Baked Oatmeal is perfect for an easy meal prep breakfast. Combine all the ingredients in one dish, bake, and enjoy throughout the week! This recipe is vegan, gluten-free, naturally sweetened, and super easy to make!\n\nFull Recipe + Nutritional Info: https://goodfoodbaddie.com/blueberry-baked-oatmeal/",
-        "channelTitle": "Capri Lilly"
+        "channelId": "UC1F8Add7s3dEDmweoWLJkdg",
+        "channelTitle": "Capri Lilly",
+        "thumbnails": {
+          "medium": {
+            "url": "https://i.ytimg.com/vi/gOxwhuntyMY/mqdefault.jpg"
+          }
+        }
       },
       "contentDetails": {
         "duration": "PT25S"
+      },
+      "status": {
+        "embeddable": true
       }
     },
     {
@@ -55,10 +91,19 @@
         "publishedAt": "2023-05-24T16:00:18Z",
         "title": "Vegan Brownies made with Black Beans?!",
         "description": "↓ TRY MY UP-TO-DATE VEGAN RECIPES↓ \n🌱 Brownie Recipes: https://www.theedgyveg.com/2023/04/24/3-ingredient-vegan-brownies/",
-        "channelTitle": "Edgy Veg"
+        "channelId": "UCvbLpfvAnGTpyO0tnw0YKGQ",
+        "channelTitle": "Edgy Veg",
+        "thumbnails": {
+          "medium": {
+            "url": "https://i.ytimg.com/vi/H0tkAEL6CS8/mqdefault.jpg"
+          }
+        }
       },
       "contentDetails": {
         "duration": "PT1M"
+      },
+      "status": {
+        "embeddable": true
       }
     }
   ]

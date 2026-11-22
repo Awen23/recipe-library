@@ -3,6 +3,7 @@ import pytest
 
 from recipes.youtube import (
     PAGE_SIZE,
+    Comment,
     QuotaExceededError,
     Video,
     YouTubeClient,
@@ -50,8 +51,21 @@ def test_video_from_api_maps_youtube_fields_to_ours() -> None:
         ),
         duration_seconds=25,
         published_at="2022-03-16T22:36:39Z",
+        channel_id="UC1F8Add7s3dEDmweoWLJkdg",
         channel_title="Capri Lilly",
+        thumbnail_url="https://i.ytimg.com/vi/gOxwhuntyMY/mqdefault.jpg",
+        embeddable=True,
     )
+
+
+def test_video_from_api_knows_when_embedding_is_turned_off() -> None:
+    [item] = [
+        item
+        for item in read_fixture("videos.json")["items"]
+        if item["id"] == "eG0tXlljTtI"
+    ]
+
+    assert Video.from_api(item).embeddable is False
 
 
 def test_playlist_video_ids_asks_for_the_playlist(fake_api: FakeYouTubeApi) -> None:
@@ -125,7 +139,7 @@ def test_videos_returns_only_what_the_api_describes(fake_api: FakeYouTubeApi) ->
     # Our part: every listed ID is asked for, including the deleted one.
     [videos_request] = fake_api.requests
     assert videos_request.url.params["id"] == "whr7iOKRXTA,nHr9LqK3PKc,Iop_LKTis_U"
-    assert videos_request.url.params["part"] == "snippet,contentDetails"
+    assert videos_request.url.params["part"] == "snippet,contentDetails,status"
     # The API's part: the deleted Iop_LKTis_U has no details, so no Video for it.
     assert [video.id for video in videos] == ["whr7iOKRXTA", "nHr9LqK3PKc"]
 
@@ -142,3 +156,46 @@ def test_videos_batches_ids_in_groups_of_50() -> None:
         client.videos(video_ids)
 
     assert [len(batch) for batch in requested_batches] == [PAGE_SIZE, PAGE_SIZE, 20]
+
+
+def test_creator_comments_keeps_only_the_videos_own_channel(
+    fake_api: FakeYouTubeApi,
+) -> None:
+    with YouTubeClient("test-key", transport=fake_api.transport) as client:
+        comments = client.creator_comments("eG0tXlljTtI")
+
+    # Of the three comments, only the first is by the channel that posted the video.
+    assert comments == [
+        Comment(
+            id="Ugwnsgb1qinFFq2Wf3B4AaABAg",
+            text=(
+                "I feel guilty of using a lot of plastic wrap to make these... But I "
+                "haven't thought of a good substitute. If you have a good idea, "
+                "please share in the comment!"
+            ),
+            published_at="2022-08-28T07:08:42Z",
+        )
+    ]
+
+
+def test_creator_comments_asks_for_the_top_comments_as_plain_text(
+    fake_api: FakeYouTubeApi,
+) -> None:
+    with YouTubeClient("test-key", transport=fake_api.transport) as client:
+        client.creator_comments("eG0tXlljTtI")
+
+    [request] = fake_api.requests
+    assert request.url.path.endswith("/commentThreads")
+    assert request.url.params["videoId"] == "eG0tXlljTtI"
+    assert request.url.params["order"] == "relevance"
+    assert request.url.params["maxResults"] == "20"
+    # Without this, the text comes back as HTML, with `<br>` and escaped characters.
+    assert request.url.params["textFormat"] == "plainText"
+
+
+def test_creator_comments_is_empty_when_comments_are_turned_off() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json=read_fixture("error_comments_disabled.json"))
+
+    with YouTubeClient("test-key", transport=httpx.MockTransport(handler)) as client:
+        assert client.creator_comments("eG0tXlljTtI") == []
