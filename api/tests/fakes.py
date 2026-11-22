@@ -15,6 +15,11 @@ def read_fixture(name: str) -> Any:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
+def read_page(name: str) -> str:
+    """A page in `fixtures/pages/`, trimmed to its Recipe data."""
+    return (FIXTURES / "pages" / name).read_text(encoding="utf-8")
+
+
 class FakeYouTubeApi:
     """Answers requests the way the real API did, and records each request.
 
