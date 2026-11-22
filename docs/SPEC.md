@@ -25,7 +25,8 @@ Ideas deferred while we focus on the current phase. Added to as we discuss and d
 - **robots.txt:** check each site's before fetching its pages. Every link is one a creator chose, so for now they're fetched like a person following them would.
 - **Links that failed** (a timeout, a busy site) are fetched once and not tried again.
 - **Searchable ingredient names**, such as "leeks" from "1-2 leeks, chopped or a few handfuls spinach", for the UI's search. Ingredient lines are kept as written for now.
-- **Links to other YouTube videos:** some creators link the video a recipe was shown in. That video's description could be read for the ingredients.
+- **A dish made to go inside another** (meatballs for a meatball sub) is sometimes listed as two recipes. Splitting could merge them.
+- **Links to other videos** (YouTube, TikTok, Instagram): some creators link the video a recipe was shown in. That video's description could be read for the ingredients.
 - **Addresses behind hostnames:** links to this computer or to private IP addresses are refused, but a hostname that resolves to one isn't checked yet. Add it before the app is hosted.
 - **Other people's playlists:** sign in with Google (`youtube.readonly` scope, which needs Google's app verification for a public launch). Before anyone else uses the app, move from SQLite to Postgres.
 
