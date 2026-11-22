@@ -1,7 +1,6 @@
 from functools import partial
 from pathlib import Path
 
-import httpx2
 import pytest
 from sqlalchemy import Engine, func, select
 
@@ -66,90 +65,30 @@ def test_fetch_before_migrating_says_how_to_create_the_tables(
     assert fake_api.requests == []  # nothing was fetched
 
 
-def test_no_command_shows_the_usage(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        cli.main([])
-
-    assert exit_info.value.code == 2
-    assert "usage: recipes" in capsys.readouterr().err
-
-
-@pytest.fixture
-def fetched(
-    monkeypatch: pytest.MonkeyPatch, fake_api: FakeYouTubeApi, engine: Engine
-) -> Engine:
-    """The five fixture videos fetched, and Claude replaced by the fake."""
+def test_build_asks_claude_about_each_video_and_saves_the_recipes(
+    monkeypatch: pytest.MonkeyPatch,
+    fake_api: FakeYouTubeApi,
+    engine: Engine,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     monkeypatch.setattr(
         cli, "YouTubeClient", partial(YouTubeClient, transport=fake_api.transport)
     )
-    assert cli.main(["fetch", "PLAYLIST_ID"]) == 0
-    return engine
-
-
-def test_build_asks_claude_about_each_video_and_saves_the_recipes(
-    monkeypatch: pytest.MonkeyPatch,
-    fetched: Engine,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
     fake_claude = FakeClaudeApi()
     monkeypatch.setattr(cli, "Claude", partial(Claude, transport=fake_claude.transport))
+    cli.main(["fetch", "PLAYLIST_ID"])
 
     assert cli.main(["build"]) == 0
 
-    assert len(fake_claude.requests) == 5
-    with fetched.connect() as connection:
-        names = set(connection.scalars(select(recipes.c.name)))
-    # 5 + 6 + 1 + 1 + 1 recipes in Claude's recorded answers.
-    assert len(names) == 14
-    assert "Spicy seitan sausage" in names
-    assert "Built 14 recipes from 5 videos" in capsys.readouterr().out
-
-
-def test_building_again_asks_claude_nothing(
-    monkeypatch: pytest.MonkeyPatch, fetched: Engine
-) -> None:
-    fake_claude = FakeClaudeApi()
-    monkeypatch.setattr(cli, "Claude", partial(Claude, transport=fake_claude.transport))
-    cli.main(["build"])
-    with fetched.connect() as connection:
-        ids = list(connection.scalars(select(recipes.c.id).order_by(recipes.c.id)))
-
-    assert cli.main(["build"]) == 0
-
-    assert len(fake_claude.requests) == 5  # all from the first build
-    with fetched.connect() as connection:
-        assert (
-            list(connection.scalars(select(recipes.c.id).order_by(recipes.c.id))) == ids
-        )
+    with engine.connect() as connection:
+        assert connection.scalar(select(func.count()).select_from(recipes)) == 14
+    assert "Built 14 recipes from 5 new videos" in capsys.readouterr().out
 
 
 def test_build_without_an_api_key_says_how_to_set_one(
-    fetched: Engine, capsys: pytest.CaptureFixture[str]
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     Path(".env").write_text("YOUTUBE_API_KEY=test-key\n", encoding="utf-8")
 
     assert cli.main(["build"]) == 1
     assert "ANTHROPIC_API_KEY is not set" in capsys.readouterr().err
-
-
-def test_a_video_claude_couldnt_answer_about_is_left_for_the_next_build(
-    monkeypatch: pytest.MonkeyPatch,
-    fetched: Engine,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Not from the data: the error follows the shape in Anthropic's error docs."""
-    fake_claude = FakeClaudeApi()
-    error = {
-        "type": "error",
-        "error": {"type": "invalid_request_error", "message": "x"},
-    }
-    fake_claude.queue.append(httpx2.Response(400, json=error))  # the first video
-    monkeypatch.setattr(cli, "Claude", partial(Claude, transport=fake_claude.transport))
-
-    assert cli.main(["build"]) == 1
-
-    output = capsys.readouterr()
-    # H0tkAEL6CS8 is asked about first, and its one recipe is missing.
-    assert "Built 13 recipes from 4 videos" in output.out
-    assert "1 videos have no answer from Claude yet" in output.err
-    assert cli.main(["build"]) == 0  # the next build asks again

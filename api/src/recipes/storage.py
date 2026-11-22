@@ -17,7 +17,6 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import (
-    JSON,
     Boolean,
     CheckConstraint,
     Column,
@@ -37,8 +36,7 @@ from sqlalchemy import (
     update,
 )
 
-from recipes import ai
-from recipes.ai import Reply, VideoAnswer, VideoText
+from recipes.ai import VideoText
 from recipes.chapters import Chapter, parse_chapters
 from recipes.playlist import Playlist
 from recipes.splitting import Recipe
@@ -116,7 +114,7 @@ creator_comments = Table(
 )
 
 
-# Who set a group of recipe fields. Code and AI leave groups set by hand alone.
+# Who set a group of recipe fields: plain code, AI, or a correction by hand.
 SET_BY = ("code", "ai", "hand")
 
 
@@ -127,7 +125,9 @@ def _set_by(column: str) -> CheckConstraint:
 
 # The tables below are worked out from the fetched ones, by code and by AI.
 
-# One row per recipe. A video has one or more, in the order they appear in it.
+# One row per recipe. A video has one or more, in the order they appear in it. Rows
+# are only ever added, so ratings and corrections stay attached. A recipe whose video
+# has left the playlist is removed along with it (`videos.removed_at`).
 recipes = Table(
     "recipes",
     metadata,
@@ -143,9 +143,6 @@ recipes = Table(
     # Where the recipe starts in the video. Null when it isn't known.
     Column("start_seconds", Integer, nullable=True),
     Column("start_by", String, nullable=False),
-    # Set when a rebuild finds fewer recipes in the video, or the video has left the
-    # playlist, instead of deleting the row, so anything set by hand on it is kept.
-    Column("removed_at", DateTime, nullable=True),
     UniqueConstraint("video_id", "position"),
     ForeignKeyConstraint(
         ["video_id", "chapter_position"], ["chapters.video_id", "chapters.position"]
@@ -153,22 +150,6 @@ recipes = Table(
     _set_by("name_by"),
     _set_by("start_by"),
     sqlite_autoincrement=True,  # what keeps `id`s from being reused
-)
-
-# Claude's answer for each video, so a rebuild doesn't ask again. A new prompt
-# version, model or effort asks again.
-ai_responses = Table(
-    "ai_responses",
-    metadata,
-    Column("video_id", String, ForeignKey("videos.id"), primary_key=True),
-    Column("prompt_version", Integer, primary_key=True),
-    Column("model", String, primary_key=True),
-    Column("effort", String, primary_key=True),
-    Column("answer", JSON, nullable=True),  # null when Claude refused
-    Column("stop_reason", String, nullable=False),
-    Column("input_tokens", Integer, nullable=False),
-    Column("output_tokens", Integer, nullable=False),
-    Column("created_at", DateTime, nullable=False),
 )
 
 
@@ -263,12 +244,16 @@ def save_playlist(
     return SaveSummary(added=len(new), removed=removed)
 
 
-def videos_to_split(engine: Engine) -> list[tuple[str, VideoText]]:
-    """Each video still in the playlist, by ID, with what Claude is shown about it."""
+def videos_without_recipes(engine: Engine) -> list[tuple[str, VideoText]]:
+    """Each video in the playlist that has no recipes yet, by ID, with what Claude is
+    shown about it."""
     with engine.connect() as connection:
         rows = connection.execute(
             select(videos.c.id, videos.c.title, videos.c.description)
-            .where(videos.c.removed_at.is_(None))
+            .where(
+                videos.c.removed_at.is_(None),
+                videos.c.id.not_in(select(recipes.c.video_id)),
+            )
             .order_by(videos.c.first_seen_at, videos.c.id)
         ).all()
         chapters_by_video: dict[str, list[Chapter]] = {}
@@ -297,154 +282,26 @@ def videos_to_split(engine: Engine) -> list[tuple[str, VideoText]]:
     ]
 
 
-def _current_answers() -> sqlalchemy.ColumnElement[bool]:
-    """The `ai_responses` rows for the prompt version, model and effort in use."""
-    return (
-        (ai_responses.c.prompt_version == ai.PROMPT_VERSION)
-        & (ai_responses.c.model == ai.MODEL)
-        & (ai_responses.c.effort == ai.EFFORT)
-    )
-
-
-def stored_answers(engine: Engine) -> dict[str, VideoAnswer | None]:
-    """Claude's stored answers for the prompt, model and effort in use, by video ID.
-    A video Claude declined to answer about maps to None; one not asked is missing."""
-    with engine.connect() as connection:
-        rows = connection.execute(
-            select(ai_responses.c.video_id, ai_responses.c.answer).where(
-                _current_answers()
-            )
+def save_recipes(engine: Engine, video_id: str, found: Sequence[Recipe]) -> None:
+    """Store a video's recipes, in one transaction."""
+    with engine.begin() as connection:
+        _insert(
+            connection,
+            recipes,
+            [
+                {
+                    "video_id": video_id,
+                    "position": recipe.position,
+                    "chapter_position": recipe.chapter_position,
+                    "name": recipe.name,
+                    "name_by": recipe.name_by,
+                    "name_confidence": recipe.name_confidence,
+                    "start_seconds": recipe.start_seconds,
+                    "start_by": recipe.start_by,
+                }
+                for recipe in found
+            ],
         )
-        return {
-            row.video_id: None
-            if row.answer is None
-            else VideoAnswer.model_validate(row.answer)
-            for row in rows
-        }
-
-
-def save_answer(
-    engine: Engine, video_id: str, reply: Reply, *, now: datetime | None = None
-) -> None:
-    """Store Claude's reply about a video, for the prompt, model and effort in use."""
-    with engine.begin() as connection:
-        connection.execute(
-            insert(ai_responses).values(
-                video_id=video_id,
-                prompt_version=ai.PROMPT_VERSION,
-                model=ai.MODEL,
-                effort=ai.EFFORT,
-                answer=None if reply.answer is None else reply.answer.model_dump(),
-                stop_reason=reply.stop_reason,
-                input_tokens=reply.input_tokens,
-                output_tokens=reply.output_tokens,
-                created_at=now or _utc_now(),
-            )
-        )
-
-
-@dataclass(frozen=True)
-class RecipesSummary:
-    """What changed in the `recipes` table when a video's recipes were saved."""
-
-    added: int
-    removed: int  # marked as removed, because the video has fewer recipes now
-
-
-def save_recipes(
-    engine: Engine,
-    video_id: str,
-    found: Sequence[Recipe],
-    *,
-    now: datetime | None = None,
-) -> RecipesSummary:
-    """Store a video's recipes, matched to the stored ones by position.
-
-    A stored recipe keeps its ID, and any group of fields set by hand. Stored
-    recipes past the last one found are marked as removed, not deleted, so their
-    hand-set fields are kept. It all happens in one transaction.
-
-    Position is the only match, so this relies on Claude listing the same recipes in
-    the same order on each build, which it does while the prompt and model stay the
-    same. After a change to either, a recipe Claude adds or drops shifts the ones
-    after it onto other rows.
-    """
-    now = now or _utc_now()
-    with engine.begin() as connection:
-        stored = {
-            row.position: row
-            for row in connection.execute(
-                select(recipes).where(recipes.c.video_id == video_id)
-            )
-        }
-        new_rows = []
-        for recipe in found:
-            row = stored.get(recipe.position)
-            if row is None:
-                new_rows.append(
-                    {
-                        "video_id": video_id,
-                        "position": recipe.position,
-                        "removed_at": None,
-                    }
-                    | _name_fields(recipe)
-                    | _start_fields(recipe)
-                )
-                continue
-            values: dict[str, Any] = {"removed_at": None}
-            if row.name_by != "hand":
-                values |= _name_fields(recipe)
-            if row.start_by != "hand":
-                values |= _start_fields(recipe)
-            connection.execute(
-                update(recipes).where(recipes.c.id == row.id).values(**values)
-            )
-        _insert(connection, recipes, new_rows)
-        removed = connection.execute(
-            update(recipes)
-            .where(
-                recipes.c.video_id == video_id,
-                recipes.c.position >= len(found),
-                recipes.c.removed_at.is_(None),
-            )
-            .values(removed_at=now)
-        ).rowcount
-    return RecipesSummary(added=len(new_rows), removed=removed)
-
-
-def remove_recipes_of_removed_videos(engine: Engine) -> int:
-    """Mark the recipes of each video that has left the playlist as removed, at the
-    time the video was. Returns how many were marked."""
-    removed_at = (
-        select(videos.c.removed_at)
-        .where(videos.c.id == recipes.c.video_id)
-        .scalar_subquery()
-    )
-    removed_videos = select(videos.c.id).where(videos.c.removed_at.is_not(None))
-    with engine.begin() as connection:
-        return connection.execute(
-            update(recipes)
-            .where(
-                recipes.c.video_id.in_(removed_videos), recipes.c.removed_at.is_(None)
-            )
-            .values(removed_at=removed_at)
-        ).rowcount
-
-
-def _name_fields(recipe: Recipe) -> dict[str, Any]:
-    return {
-        "name": recipe.name,
-        "name_by": recipe.name_by,
-        "name_confidence": recipe.name_confidence,
-    }
-
-
-def _start_fields(recipe: Recipe) -> dict[str, Any]:
-    return {
-        "chapter_position": recipe.chapter_position,
-        "start_seconds": recipe.start_seconds,
-        "start_by": recipe.start_by,
-    }
 
 
 def _insert(

@@ -14,9 +14,6 @@ from recipes.chapters import Chapter
 
 MODEL = "claude-haiku-5-5"
 EFFORT: Final = "medium"  # `Final` keeps its type `Literal["medium"]`, as the SDK wants
-# Bump this by hand whenever SYSTEM_PROMPT or the answer's shape changes, so the
-# next build asks again instead of reusing answers to the old prompt.
-PROMPT_VERSION = 2
 MAX_TOKENS = 8000  # far more than an answer needs; thinking counts towards it
 
 SYSTEM_PROMPT = """\

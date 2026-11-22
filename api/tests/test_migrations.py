@@ -16,7 +16,6 @@ TABLES = {
     "chapters",
     "creator_comments",
     "recipes",
-    "ai_responses",
 }
 
 

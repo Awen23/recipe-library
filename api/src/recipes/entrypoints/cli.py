@@ -8,9 +8,9 @@ from dotenv import dotenv_values, find_dotenv
 from sqlalchemy import Engine
 
 from recipes import storage
-from recipes.ai import AIError, AIKeyError, Claude, VideoAnswer, VideoText
+from recipes.ai import AIKeyError, Claude
+from recipes.building import build_recipes
 from recipes.playlist import fetch_playlist
-from recipes.splitting import split_video
 from recipes.youtube import YouTubeClient, YouTubeError
 
 
@@ -26,7 +26,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     fetch.set_defaults(run=_fetch)
 
     build = commands.add_parser(
-        "build", help="work out the recipes in the fetched videos, asking Claude"
+        "build", help="split new videos into recipes, asking Claude"
     )
     build.set_defaults(run=_build)
 
@@ -63,79 +63,26 @@ def _fetch(args: argparse.Namespace) -> int:
 
 def _build(_args: argparse.Namespace) -> int:
     engine = _open_database()
-    if engine is None:
+    api_key = _secret("ANTHROPIC_API_KEY")
+    if engine is None or not api_key:
         return 1
 
-    videos = storage.videos_to_split(engine)
-    answers = storage.stored_answers(engine)
-    to_ask = [(id_, video) for id_, video in videos if id_ not in answers]
-
-    asked = input_tokens = output_tokens = 0
-    if to_ask:
-        api_key = _secret("ANTHROPIC_API_KEY")
-        if api_key:
-            print(f"Asking Claude about {len(to_ask)} videos…")
-            asked, input_tokens, output_tokens = _ask_claude(
-                engine, api_key, to_ask, answers
-            )
-    failed = len(to_ask) - asked
-
-    added = removed = total = 0
-    for video_id, video in videos:
-        if video_id not in answers:
-            continue  # asking failed; its stored recipes are left as they are
-        found = split_video(video.title, video.chapters, answers[video_id])
-        summary = storage.save_recipes(engine, video_id, found)
-        added, removed = added + summary.added, removed + summary.removed
-        total += len(found)
-    # Videos that left the playlist aren't split again; their recipes go with them.
-    removed += storage.remove_recipes_of_removed_videos(engine)
+    try:
+        with Claude(api_key) as claude:
+            summary = build_recipes(engine, claude)
+    except AIKeyError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
 
     print(
-        f"Built {total} recipes from {len(videos) - failed} videos "
-        f"({added} new, {removed} marked as removed). "
-        f"Asked Claude about {asked} videos "
-        f"({input_tokens} input and {output_tokens} output tokens)."
+        f"Built {summary.recipes} recipes from {summary.videos} new videos "
+        f"({summary.input_tokens} input and {summary.output_tokens} output tokens)."
     )
-    if failed:
+    for video_id, reason in summary.failed.items():
         print(
-            f"error: {failed} videos have no answer from Claude yet. "
-            "Run `recipes build` again to retry them.",
-            file=sys.stderr,
+            f"error: {video_id}: {reason}. Run `recipes build` again.", file=sys.stderr
         )
-        return 1
-    return 0
-
-
-def _ask_claude(
-    engine: Engine,
-    api_key: str,
-    to_ask: list[tuple[str, VideoText]],
-    answers: dict[str, VideoAnswer | None],
-) -> tuple[int, int, int]:
-    """Ask Claude about each video, adding the answers to `answers`. Returns how
-    many were answered, and the input and output tokens used.
-
-    Each answer is stored as it arrives, so a build that stops part way doesn't
-    pay for the same answers again.
-    """
-    asked = input_tokens = output_tokens = 0
-    with Claude(api_key) as claude:
-        for video_id, video in to_ask:
-            try:
-                reply = claude.find_recipes(video)
-            except AIKeyError as error:
-                print(f"error: {error}", file=sys.stderr)
-                break  # every later request would be rejected too
-            except AIError as error:
-                print(f"warning: {video_id}: {error}", file=sys.stderr)
-                continue
-            storage.save_answer(engine, video_id, reply)
-            answers[video_id] = reply.answer
-            asked += 1
-            input_tokens += reply.input_tokens
-            output_tokens += reply.output_tokens
-    return asked, input_tokens, output_tokens
+    return 1 if summary.failed else 0
 
 
 def _secret(name: str) -> str | None:

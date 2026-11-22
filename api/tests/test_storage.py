@@ -8,11 +8,9 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine, Table, select
 
-from recipes.ai import Reply
 from recipes.playlist import Playlist, fetch_playlist
 from recipes.splitting import split_video
 from recipes.storage import (
-    RecipesSummary,
     SaveSummary,
     channels,
     chapters,
@@ -20,13 +18,10 @@ from recipes.storage import (
     creator_comments,
     needs_migrating,
     recipes,
-    remove_recipes_of_removed_videos,
-    save_answer,
     save_playlist,
     save_recipes,
-    stored_answers,
     videos,
-    videos_to_split,
+    videos_without_recipes,
 )
 from recipes.youtube import YouTubeClient
 
@@ -206,6 +201,9 @@ def test_create_engine_uses_database_url_when_none_is_given(
     assert create_engine().url.database == str(tmp_path / "other.db")
 
 
+MEAL_PREP_ID = "whr7iOKRXTA"  # five recipes; its full description has chapters
+
+
 @pytest.fixture
 def saved(engine: Engine, playlist: Playlist) -> Engine:
     """The playlist saved, with the full descriptions of the videos that have them,
@@ -219,123 +217,50 @@ def saved(engine: Engine, playlist: Playlist) -> Engine:
     return engine
 
 
-def whr7_recipes(engine: Engine) -> list[dict[str, Any]]:
-    return sorted(
-        (r for r in rows(engine, recipes) if r["video_id"] == "whr7iOKRXTA"),
-        key=lambda r: r["position"],
-    )
+def save_meal_prep_recipes(engine: Engine) -> None:
+    [video] = [v for id_, v in videos_without_recipes(engine) if id_ == MEAL_PREP_ID]
+    found = split_video(video.title, video.chapters, recorded_answer(MEAL_PREP_ID))
+    save_recipes(engine, MEAL_PREP_ID, found)
 
 
-def save_whr7_recipes(engine: Engine, **kwargs: Any) -> RecipesSummary:
-    [(_, video)] = [v for v in videos_to_split(engine) if v[0] == "whr7iOKRXTA"]
-    found = split_video(video.title, video.chapters, recorded_answer("whr7iOKRXTA"))
-    return save_recipes(engine, "whr7iOKRXTA", found, **kwargs)
-
-
-def test_videos_to_split_have_their_chapters_and_creator_comments(
+def test_videos_without_recipes_have_their_chapters_and_creator_comments(
     saved: Engine,
 ) -> None:
-    to_split = dict(videos_to_split(saved))
+    to_build = dict(videos_without_recipes(saved))
 
-    assert len(to_split) == 5
-    assert [c.title for c in to_split["whr7iOKRXTA"].chapters][:2] == [
+    assert len(to_build) == 5
+    assert [c.title for c in to_build[MEAL_PREP_ID].chapters][:2] == [
         "Intro",
         "Breakfasts",
     ]
-    [comment] = to_split["eG0tXlljTtI"].creator_comments
+    [comment] = to_build["eG0tXlljTtI"].creator_comments
     assert comment.startswith("I feel guilty of using a lot of plastic wrap")
 
 
-def test_a_stored_answer_is_found_again(saved: Engine) -> None:
-    reply = Reply(recorded_answer("whr7iOKRXTA"), "end_turn", 3310, 206)
-
-    save_answer(saved, "whr7iOKRXTA", reply)
-
-    assert stored_answers(saved) == {"whr7iOKRXTA": reply.answer}
-
-
 def test_save_recipes_stores_each_recipe(saved: Engine) -> None:
-    summary = save_whr7_recipes(saved)
+    save_meal_prep_recipes(saved)
 
-    assert summary == RecipesSummary(added=5, removed=0)
-    first = whr7_recipes(saved)[0]
-    assert {k: first[k] for k in ("position", "chapter_position", "name")} == {
-        "position": 0,
-        "chapter_position": 1,
-        "name": "Overnight oats",
-    }
-    assert (first["start_seconds"], first["start_by"]) == (102, "ai")
-
-
-def test_saving_recipes_again_keeps_their_ids(saved: Engine) -> None:
-    save_whr7_recipes(saved)
-    ids = [r["id"] for r in whr7_recipes(saved)]
-
-    summary = save_whr7_recipes(saved)
-
-    assert summary == RecipesSummary(added=0, removed=0)
-    assert [r["id"] for r in whr7_recipes(saved)] == ids
+    stored = sorted(rows(saved, recipes), key=lambda r: r["position"])
+    assert [r["name"] for r in stored] == [
+        "Overnight oats",
+        "Mexican inspired salad",
+        "Sticky lemon & garlic tofu",
+        "Hearty vegan lasagne",
+        "Raspberry oat bars",
+    ]
+    assert (stored[0]["chapter_position"], stored[0]["start_seconds"]) == (1, 102)
 
 
-def test_saving_recipes_keeps_fields_set_by_hand(saved: Engine) -> None:
-    """Not from the data: nothing sets fields by hand yet, so one is set here."""
-    save_whr7_recipes(saved)
-    with saved.begin() as connection:
-        connection.execute(
-            recipes.update()
-            .where(recipes.c.video_id == "whr7iOKRXTA", recipes.c.position == 0)
-            .values(name="Three breakfasts", name_by="hand")
-        )
+def test_a_video_with_recipes_isnt_built_again(saved: Engine) -> None:
+    save_meal_prep_recipes(saved)
 
-    [(_, video)] = [v for v in videos_to_split(saved) if v[0] == "whr7iOKRXTA"]
-    found = split_video(video.title, video.chapters, recorded_answer("whr7iOKRXTA"))
-    # The next answer puts the first recipe at the start of the video.
-    found[0] = replace(found[0], name="Overnight oats 2", start_seconds=0)
-
-    save_recipes(saved, "whr7iOKRXTA", found)
-
-    first, second = whr7_recipes(saved)[:2]
-    assert (first["name"], first["name_by"]) == ("Three breakfasts", "hand")
-    assert first["start_seconds"] == 0  # not set by hand, so updated
-    assert second["name"] == "Mexican inspired salad"
+    assert MEAL_PREP_ID not in dict(videos_without_recipes(saved))
+    assert len(videos_without_recipes(saved)) == 4
 
 
-def test_recipes_past_the_last_one_found_are_marked_as_removed(
-    saved: Engine,
-) -> None:
-    """Not from the data: Claude's answer is cut down to two recipes."""
-    save_whr7_recipes(saved)
-    [(_, video)] = [v for v in videos_to_split(saved) if v[0] == "whr7iOKRXTA"]
-    found = split_video(video.title, video.chapters, recorded_answer("whr7iOKRXTA"))
-
-    summary = save_recipes(saved, "whr7iOKRXTA", found[:2], now=SECOND_FETCH)
-
-    assert summary == RecipesSummary(added=0, removed=3)
-    assert [r["removed_at"] for r in whr7_recipes(saved)] == [None, None] + [
-        SECOND_FETCH
-    ] * 3
-
-
-def test_the_recipes_of_a_removed_video_are_marked_as_removed(
-    saved: Engine, playlist: Playlist
-) -> None:
-    save_whr7_recipes(saved)
+def test_a_removed_video_isnt_built(saved: Engine, playlist: Playlist) -> None:
     # Not from the data: the meal prep video leaves the playlist.
-    rest = tuple(v for v in playlist.videos if v.id != "whr7iOKRXTA")
+    rest = tuple(v for v in playlist.videos if v.id != MEAL_PREP_ID)
     save_playlist(replace(playlist, videos=rest), saved, now=SECOND_FETCH)
 
-    assert remove_recipes_of_removed_videos(saved) == 5
-    assert {r["removed_at"] for r in whr7_recipes(saved)} == {SECOND_FETCH}
-    assert remove_recipes_of_removed_videos(saved) == 0  # already marked
-
-
-def test_a_removed_recipe_found_again_is_no_longer_removed(saved: Engine) -> None:
-    """Not from the data: Claude's answer is cut down, then whole again."""
-    save_whr7_recipes(saved)
-    [(_, video)] = [v for v in videos_to_split(saved) if v[0] == "whr7iOKRXTA"]
-    found = split_video(video.title, video.chapters, recorded_answer("whr7iOKRXTA"))
-    save_recipes(saved, "whr7iOKRXTA", found[:2], now=SECOND_FETCH)
-
-    save_whr7_recipes(saved)
-
-    assert [r["removed_at"] for r in whr7_recipes(saved)] == [None] * 5
+    assert MEAL_PREP_ID not in dict(videos_without_recipes(saved))
