@@ -15,8 +15,9 @@ I don't yet know what the data looks like, so the plan starts by finding out. On
 ## 2. Phases
 1. **Understand the playlist.** Fetch it, and measure what's actually there: how recipes are split across videos, how Shorts differ, and where recipe details live. *(Done: findings in Section 4.)*
 2. **Useful info for every recipe.** Split each video into its recipes, each with a name, a start time where there is one, and its ingredients and method wherever they can be found. Plain code does what it can, and AI does the parts Phase 1 showed plain code can't. *(Planned in Section 5.)*
-3. **Rating and sorting.** Hide the recipes in a multi-recipe video that I'm not interested in, and rate my interest in the rest, so the library can be filtered down to what I'd actually cook.
-4. **The UI.** A deployed web app (Python API, React + TypeScript frontend) for searching, filtering and rating the library.
+3. **Rating, sorting and search.** Everything the UI needs from the data. Hide the recipes in a multi-recipe video that I'm not interested in, and rate my interest in the rest, so the library can be filtered down to what I'd actually cook. Search over names and ingredients, in one function, with searchable ingredient names. Tidy what the library shows, such as videos that aren't recipes.
+4. **The API.** FastAPI routes to list, search and filter recipes, rate or hide them, and refresh the playlist in the background, with response models that give the frontend its types. Access control, so only I can change ratings or start a refresh. Run locally: nothing is deployed yet.
+5. **The UI, deployed.** A React + TypeScript frontend for searching, filtering and rating the library, built on the API. Then the whole app is deployed to Fly.io, with backups of the database.
 
 ## 3. Later
 Ideas deferred while we focus on the current phase. Added to as we discuss and defer things.
@@ -99,7 +100,7 @@ Counts are from the 434 available videos. "Shorts" means 3 minutes or less, beca
 ## 5. Phase 2: useful info for every recipe
 
 ### Goal
-Every video becomes one or more **recipes**, ready for rating (Phase 3) and the UI (Phase 4). Each recipe has:
+Every video becomes one or more **recipes**, ready for rating (Phase 3), the API (Phase 4) and the UI (Phase 5). Each recipe has:
 - a name
 - its video
 - a start time, or none if the description has no timestamp for it
