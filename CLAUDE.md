@@ -19,7 +19,7 @@ mypy                                   # type check
 
 alembic upgrade head                   # create or update the database, data/recipes.db
 recipes fetch <playlist-id>            # fetch the playlist's new videos, and the pages they link to
-recipes build                          # split new videos into recipes, asking Claude, and fill in details from pages
+recipes build                          # split new videos into recipes and find their ingredients, asking Claude
 alembic revision --autogenerate -m "describe the change"   # write a migration after changing the tables in storage.py
 
 pip-compile --generate-hashes --strip-extras -o requirements.txt pyproject.toml   # re-lock runtime deps after changing them
