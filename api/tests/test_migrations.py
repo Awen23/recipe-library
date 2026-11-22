@@ -16,7 +16,7 @@ TABLES = {
     "chapters",
     "creator_comments",
     "recipes",
-    "video_links",
+    "recipe_links",
 }
 
 

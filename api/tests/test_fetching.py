@@ -2,7 +2,7 @@ import httpx2
 from sqlalchemy import Engine, select
 
 from recipes.fetching import fetch_linked_pages
-from recipes.storage import video_links
+from recipes.storage import recipe_links
 
 from fakes import FakeWeb
 
@@ -10,12 +10,12 @@ from fakes import FakeWeb
 def page_rows(engine: Engine) -> list[tuple[str, int, str, str, str]]:
     with engine.connect() as connection:
         query = select(
-            video_links.c.video_id,
-            video_links.c.position,
-            video_links.c.url,
-            video_links.c.link_text,
-            video_links.c.outcome,
-        ).order_by(video_links.c.video_id, video_links.c.position)
+            recipe_links.c.video_id,
+            recipe_links.c.position,
+            recipe_links.c.url,
+            recipe_links.c.link_text,
+            recipe_links.c.outcome,
+        ).order_by(recipe_links.c.video_id, recipe_links.c.position)
         return [tuple(row) for row in connection.execute(query)]  # type: ignore[misc]
 
 
@@ -81,8 +81,8 @@ def test_keeps_where_a_short_link_led(fetched: Engine) -> None:
 
     with fetched.connect() as connection:
         final_url, outcome = connection.execute(
-            select(video_links.c.final_url, video_links.c.outcome).where(
-                video_links.c.url == "https://bit.ly/3RflF7w"
+            select(recipe_links.c.final_url, recipe_links.c.outcome).where(
+                recipe_links.c.url == "https://bit.ly/3RflF7w"
             )
         ).one()
     assert (final_url, outcome) == (substack, "no recipe data")
@@ -95,5 +95,5 @@ def test_a_page_without_a_recipe_stores_null(
         fetch_linked_pages(fetched, fetcher)
 
     with fetched.connect() as connection:
-        query = select(video_links.c.url).where(video_links.c.recipe.is_(None))
+        query = select(recipe_links.c.url).where(recipe_links.c.recipe.is_(None))
         assert len(connection.execute(query).all()) == 4  # SQL NULL, not "null"
