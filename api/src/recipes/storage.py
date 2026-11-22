@@ -16,16 +16,20 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import (
+    JSON,
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Engine,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     MetaData,
     String,
     Table,
     Text,
+    UniqueConstraint,
     event,
     insert,
     select,
@@ -105,6 +109,62 @@ creator_comments = Table(
     Column("video_id", String, ForeignKey("videos.id"), nullable=False, index=True),
     Column("text", Text, nullable=False),
     Column("published_at", DateTime, nullable=False),
+)
+
+
+# Who set a group of recipe fields. Code and AI leave groups set by hand alone.
+SET_BY = ("code", "ai", "hand")
+
+
+def _set_by(column: str) -> CheckConstraint:
+    allowed = ", ".join(f"'{by}'" for by in SET_BY)
+    return CheckConstraint(f"{column} IN ({allowed})", name=column)
+
+
+# The tables below are worked out from the fetched ones, by code and by AI.
+
+# One row per recipe. A video has one or more, in the order they appear in it.
+recipes = Table(
+    "recipes",
+    metadata,
+    # Never reused, even after a row is deleted, so links to a recipe stay right.
+    Column("id", Integer, primary_key=True),
+    Column("video_id", String, ForeignKey("videos.id"), nullable=False),
+    Column("position", Integer, nullable=False),  # 0, 1, 2… within the video
+    # The chapter the recipe starts in, if the video has chapters.
+    Column("chapter_position", Integer, nullable=True),
+    Column("name", String, nullable=False),
+    Column("name_by", String, nullable=False),
+    Column("name_confidence", Integer, nullable=True),  # 0-100, when AI named it
+    # Where the recipe starts in the video. Null when it isn't known.
+    Column("start_seconds", Integer, nullable=True),
+    Column("start_by", String, nullable=False),
+    # Set when a rebuild finds fewer recipes in the video, instead of deleting the
+    # row, so anything set by hand on it is kept.
+    Column("removed_at", DateTime, nullable=True),
+    UniqueConstraint("video_id", "position"),
+    ForeignKeyConstraint(
+        ["video_id", "chapter_position"], ["chapters.video_id", "chapters.position"]
+    ),
+    _set_by("name_by"),
+    _set_by("start_by"),
+    sqlite_autoincrement=True,  # what keeps `id`s from being reused
+)
+
+# Claude's answer for each video, so a rebuild doesn't ask again. A new prompt
+# version, model or effort asks again.
+ai_responses = Table(
+    "ai_responses",
+    metadata,
+    Column("video_id", String, ForeignKey("videos.id"), primary_key=True),
+    Column("prompt_version", Integer, primary_key=True),
+    Column("model", String, primary_key=True),
+    Column("effort", String, primary_key=True),
+    Column("answer", JSON, nullable=True),  # null when Claude refused
+    Column("stop_reason", String, nullable=False),
+    Column("input_tokens", Integer, nullable=False),
+    Column("output_tokens", Integer, nullable=False),
+    Column("created_at", DateTime, nullable=False),
 )
 
 

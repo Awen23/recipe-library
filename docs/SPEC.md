@@ -117,11 +117,13 @@ Fetched, created in PR 1:
 
 Worked out, created in later PRs:
 - **`recipes`** (PR 2) holds what a recipe card shows:
-  - `id` (never reused), `video_id` and `position` within the video (unique together), and `found_by` (`chapter` or `ai`)
+  - `id` (never reused), `video_id` and `position` within the video (unique together), and `chapter_position`, the chapter it starts in
   - `name`, with `name_by` and `name_confidence`
   - `start_seconds`, with `start_by`
-  - the details: `ingredients` (a JSON list), `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four
+  - `removed_at`, set when a rebuild finds fewer recipes in the video
   - Each `_by` is `code`, `ai` or `hand`. Code and AI skip any group whose `_by` is `hand`.
+  - PR 3 adds the details: `ingredients` (a JSON list), `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four.
+- **`ai_responses`** (PR 2): Claude's answer for each video, keyed by the video, prompt version, model and effort, so a rebuild only asks again when one of those changes.
 - **`recipe_pages`** (PR 3): each linked page as fetched: its URL, where it redirected to, when it was fetched, what was found (such as `recipe`, `no recipe data` or `HTTP 403`), and its schema.org `Recipe` data.
 
 ### PRs
