@@ -9,3 +9,4 @@ Trimmed copies of real YouTube Data API responses for the playlist, captured on 
 - **`error_playlist_not_found.json`:** a real 404 response, for a playlist ID that doesn't exist.
 - **`error_quota_exceeded.json`:** not captured, because it can't be triggered safely. It follows the `quotaExceeded` example in [Google's error docs](https://developers.google.com/youtube/v3/docs/errors).
 - **`error_comments_disabled.json`:** not captured, because no video in the playlist has its comments turned off. It follows the `commentsDisabled` error in the [`commentThreads.list` docs](https://developers.google.com/youtube/v3/docs/commentThreads/list#errors).
+- **`claude_replies.json`:** Claude's real replies (Claude Haiku 5.5, prompt version 1) for the five videos in `videos.json`, captured on 22 Nov 2026 and keyed by video ID. Each was asked about the video's full description, chapters and creator comments.

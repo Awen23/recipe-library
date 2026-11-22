@@ -48,3 +48,31 @@ class FakeYouTubeApi:
                 return httpx2.Response(200, json=read_fixture("comment_threads.json"))
             return httpx2.Response(200, json={"items": []})
         return httpx2.Response(404)
+
+
+class FakeClaudeApi:
+    """A stand-in for the Claude Messages API, and records each request.
+
+    It answers with Claude's real replies in `claude_replies.json`, picked by the
+    title in the request, for the five videos in `videos.json`. Each reply was
+    recorded for the video's full description, chapters and creator comments.
+    Responses put in `queue` are served first, in order.
+    """
+
+    def __init__(self) -> None:
+        self.requests: list[httpx2.Request] = []
+        self.queue: list[httpx2.Response] = []
+        self.transport = httpx2.MockTransport(self._handle)
+        replies = read_fixture("claude_replies.json")
+        self._replies = {
+            item["snippet"]["title"]: replies[item["id"]]
+            for item in read_fixture("videos.json")["items"]
+        }
+
+    def _handle(self, request: httpx2.Request) -> httpx2.Response:
+        self.requests.append(request)
+        if self.queue:
+            return self.queue.pop(0)
+        message = json.loads(request.content)["messages"][0]["content"]
+        title = message.split("<title>", 1)[1].split("</title>", 1)[0]
+        return httpx2.Response(200, json=self._replies[title])
