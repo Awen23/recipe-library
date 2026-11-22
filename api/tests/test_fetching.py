@@ -1,10 +1,14 @@
+from dataclasses import replace
+
 import httpx2
 from sqlalchemy import Engine, select
 
 from recipes.fetching import fetch_linked_pages
-from recipes.storage import recipe_links
+from recipes.playlist import fetch_playlist
+from recipes.storage import recipe_links, save_playlist
+from recipes.youtube import YouTubeClient
 
-from fakes import FakeWeb
+from fakes import FakeWeb, FakeYouTubeApi
 
 
 def page_rows(engine: Engine) -> list[tuple[str, int, str, str, str]]:
@@ -51,17 +55,26 @@ def test_stores_what_each_link_led_to(fetched: Engine, fake_web: FakeWeb) -> Non
     ]
 
 
-def test_links_already_fetched_are_not_fetched_again(
-    fetched: Engine, fake_web: FakeWeb
+def test_each_fetch_fetches_only_the_new_videos_links(
+    engine: Engine, fake_api: FakeYouTubeApi, fake_web: FakeWeb
 ) -> None:
-    # `recipes fetch` runs whenever the playlist has new videos. Only their links
-    # are fetched: the stored videos' links were fetched the first time.
+    # `recipes fetch` runs whenever the playlist has new videos, and only works on
+    # what's new. Here the oatmeal video is added to the playlist after a first fetch.
+    with YouTubeClient("test-key", transport=fake_api.transport) as client:
+        playlist = fetch_playlist(client, "PLAYLIST_ID")
+    without_oatmeal = tuple(v for v in playlist.videos if v.id != "gOxwhuntyMY")
+    save_playlist(replace(playlist, videos=without_oatmeal), engine)
     with fake_web.fetcher() as fetcher:
-        fetch_linked_pages(fetched, fetcher)
+        fetch_linked_pages(engine, fetcher)
         before = len(fake_web.requests)
+        save_playlist(playlist, engine)
 
-        assert fetch_linked_pages(fetched, fetcher).links == 0
-    assert len(fake_web.requests) == before
+        summary = fetch_linked_pages(engine, fetcher)
+
+    assert (summary.videos, summary.links) == (1, 1)
+    assert [str(r.url) for r in fake_web.requests[before:]] == [
+        "https://goodfoodbaddie.com/blueberry-baked-oatmeal/"
+    ]
 
 
 def test_keeps_where_a_short_link_led(fetched: Engine) -> None:
