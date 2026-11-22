@@ -53,10 +53,8 @@ def build_recipes(engine: Engine, claude: Claude) -> BuildSummary:
 
 @dataclass
 class DetailsSummary:
-    """What looking for recipes' written recipes did."""
+    """What looking for recipes' written recipes did, for the command line to say."""
 
-    videos: int = 0  # videos looked at
-    asked: int = 0  # of those, the ones Claude was asked about
     found: int = 0  # recipes given ingredients
     failed: dict[str, str] = field(default_factory=dict)  # video ID: why
     input_tokens: int = 0
@@ -81,10 +79,8 @@ def fill_details(engine: Engine, claude: Claude) -> DetailsSummary:
                 summary.failed[video.id] = str(error)
                 continue
             found = from_answer(video, pages, reply.answer)
-            summary.asked += 1
             summary.input_tokens += reply.input_tokens
             summary.output_tokens += reply.output_tokens
         storage.save_details(engine, found)
-        summary.videos += 1
         summary.found += sum(d.ingredients is not None for d in found.values())
     return summary

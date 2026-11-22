@@ -93,7 +93,7 @@ def test_claude_is_asked_only_about_videos_plain_code_cant_settle(
 
     # The meal prep and six-meal videos. The oatmeal and brownies have one recipe
     # and a recipe page, and the seitan video has nothing to read.
-    assert (summary.videos, summary.asked, summary.failed) == (5, 2, {})
+    assert summary.failed == {}
     assert len(fake_claude.requests) - before == 2
 
 
@@ -135,7 +135,7 @@ def test_looking_again_asks_nothing_and_changes_nothing(
         )
     before = len(fake_claude.requests)
 
-    assert fill(built, fake_claude).videos == 0
+    assert fill(built, fake_claude).found == 0
     assert len(fake_claude.requests) == before
     assert details(built, OATMEAL_ID)[0]["ingredients"] == ["3 cups oats"]
 
@@ -150,7 +150,9 @@ def test_a_video_claude_couldnt_answer_about_is_left_for_the_next_build(
     summary = fill(built, fake_claude)
 
     assert len(summary.failed) == 1
-    assert fill(built, fake_claude).asked == 1
+    before = len(fake_claude.requests)
+    fill(built, fake_claude)
+    assert len(fake_claude.requests) - before == 1
 
 
 def test_videos_wait_until_their_links_are_fetched(

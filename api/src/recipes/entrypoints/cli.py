@@ -97,8 +97,7 @@ def _build(_args: argparse.Namespace) -> int:
         f"({summary.input_tokens} input and {summary.output_tokens} output tokens)."
     )
     print(
-        f"Looked for the written recipes in {details.videos} videos, asking Claude "
-        f"about {details.asked}, and found ingredients for {details.found} recipes "
+        f"Found ingredients for {details.found} recipes "
         f"({details.input_tokens} input and {details.output_tokens} output tokens)."
     )
     failed = summary.failed | details.failed
