@@ -16,7 +16,6 @@ USER_AGENT = "recipe-library/0.1 (a personal recipe index)"
 TIMEOUT_SECONDS = 20
 MAX_BYTES = 5_000_000  # recipe pages are well under this
 MAX_REDIRECTS = 10
-SAME_SITE_PAUSE_SECONDS = 1.5  # between two requests to the same site
 RETRY_PAUSE_SECONDS = 10  # before the one retry after a 429 or 503
 _RETRY_STATUSES = (429, 503)  # too many requests, or busy: worth one more try
 
@@ -42,9 +41,9 @@ class Page:
 
 
 class PageFetcher:
-    """Fetches one page at a time, pausing between requests to the same site.
+    """Fetches one page at a time.
 
-    `sleep` and `clock` are for tests, which pass fakes to avoid waiting.
+    `sleep` is for tests, which pass a fake to avoid waiting before a retry.
     """
 
     def __init__(
@@ -52,7 +51,6 @@ class PageFetcher:
         transport: httpx2.BaseTransport | None = None,
         *,
         sleep: Callable[[float], None] = time.sleep,
-        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._client = httpx2.Client(
             transport=transport,
@@ -60,8 +58,6 @@ class PageFetcher:
             timeout=TIMEOUT_SECONDS,
         )
         self._sleep = sleep
-        self._clock = clock
-        self._last_request: dict[str, float] = {}  # by host
 
     def __enter__(self) -> Self:
         return self
@@ -84,7 +80,7 @@ class PageFetcher:
             if _is_private(request.url.host):
                 return Page(url, str(request.url), PRIVATE, None)
             try:
-                response = self._send(request)
+                response = self._client.send(request, stream=True)
             except httpx2.HTTPError:
                 return Page(url, None, ERROR, None)
             try:
@@ -99,17 +95,6 @@ class PageFetcher:
             finally:
                 response.close()
         return Page(url, None, ERROR, None)
-
-    def _send(self, request: httpx2.Request) -> httpx2.Response:
-        host = request.url.host
-        if host in self._last_request:
-            wait = SAME_SITE_PAUSE_SECONDS - (self._clock() - self._last_request[host])
-            if wait > 0:
-                self._sleep(wait)
-        try:
-            return self._client.send(request, stream=True)
-        finally:
-            self._last_request[host] = self._clock()
 
     def _read(self, url: str, response: httpx2.Response) -> Page:
         final_url = str(response.url)

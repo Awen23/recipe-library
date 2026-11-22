@@ -13,7 +13,6 @@ from recipes.pages import (
     PRIVATE,
     RECIPE,
     RETRY_PAUSE_SECONDS,
-    SAME_SITE_PAUSE_SECONDS,
     SKIPPED,
     TOO_BIG,
     USER_AGENT,
@@ -84,25 +83,12 @@ def test_does_not_fetch_a_skipped_site_a_link_redirects_to() -> None:
     assert [str(r.url) for r in web.requests] == ["https://short.test/abc"]
 
 
-def test_pauses_between_requests_to_the_same_site_only() -> None:
-    web = FakeWeb(
-        {
-            url: httpx2.Response(200, headers=HTML, content=NO_RECIPE_HTML)
-            for url in ("https://a.test/1", "https://a.test/2", "https://b.test/")
-        }
-    )
-
-    web.fetch_all(["https://a.test/1", "https://b.test/", "https://a.test/2"])
-
-    assert web.time.sleeps == [SAME_SITE_PAUSE_SECONDS]
-
-
 def test_retries_once_when_a_site_is_busy() -> None:
     ok = httpx2.Response(200, headers=HTML, content=NO_RECIPE_HTML)
     web = FakeWeb({"https://a.test/": [httpx2.Response(429), ok]})
 
     assert web.fetch("https://a.test/").outcome == NO_RECIPE
-    assert web.time.sleeps == [RETRY_PAUSE_SECONDS]
+    assert web.sleeps == [RETRY_PAUSE_SECONDS]
 
 
 def test_gives_up_after_one_retry() -> None:

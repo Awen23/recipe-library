@@ -106,21 +106,6 @@ def recorded_answer(video_id: str) -> VideoAnswer:
     return VideoAnswer.model_validate_json(reply["content"][0]["text"])
 
 
-class FakeTime:
-    """A clock that only moves when the code sleeps, recording each sleep."""
-
-    def __init__(self) -> None:
-        self.now = 0.0
-        self.sleeps: list[float] = []
-
-    def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
-        self.now += seconds
-
-    def clock(self) -> float:
-        return self.now
-
-
 class FakeWeb:
     """Serves the responses in `pages`, by URL, and a 404 for any other URL,
     recording each request. A list of responses is served one per request."""
@@ -130,7 +115,7 @@ class FakeWeb:
     ) -> None:
         self.pages = pages or {}
         self.requests: list[httpx2.Request] = []
-        self.time = FakeTime()
+        self.sleeps: list[float] = []  # how long the fetcher waited, each time
 
     def _handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
@@ -138,12 +123,9 @@ class FakeWeb:
         return page.pop(0) if isinstance(page, list) else page
 
     def fetcher(self) -> PageFetcher:
-        """A PageFetcher that fetches from this fake, without waiting."""
-        return PageFetcher(
-            httpx2.MockTransport(self._handle),
-            sleep=self.time.sleep,
-            clock=self.time.clock,
-        )
+        """A PageFetcher that fetches from this fake, recording waits instead of
+        waiting."""
+        return PageFetcher(httpx2.MockTransport(self._handle), sleep=self.sleeps.append)
 
     def fetch(self, url: str) -> Page:
         return self.fetch_all([url])[0]
