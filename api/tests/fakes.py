@@ -1,4 +1,5 @@
-"""A stand-in for the YouTube API, serving the saved responses in `fixtures/`."""
+"""Stand-ins for the YouTube API, the Claude API and the web, so tests never use the
+network."""
 
 import json
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Any
 import httpx2
 
 from recipes.ai import VideoAnswer
+from recipes.pages import Page, PageFetcher
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -89,3 +91,50 @@ def recorded_answer(video_id: str) -> VideoAnswer:
     """Claude's real answer for a video in `videos.json`, from `claude_replies.json`."""
     reply = read_fixture("claude_replies.json")[video_id]
     return VideoAnswer.model_validate_json(reply["content"][0]["text"])
+
+
+class FakeTime:
+    """A clock that only moves when the code sleeps, recording each sleep."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+        self.sleeps: list[float] = []
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+        self.now += seconds
+
+    def clock(self) -> float:
+        return self.now
+
+
+class FakeWeb:
+    """Serves the responses in `pages`, by URL, and a 404 for any other URL,
+    recording each request. A list of responses is served one per request."""
+
+    def __init__(
+        self, pages: dict[str, httpx2.Response | list[httpx2.Response]] | None = None
+    ) -> None:
+        self.pages = pages or {}
+        self.requests: list[httpx2.Request] = []
+        self.time = FakeTime()
+
+    def _handle(self, request: httpx2.Request) -> httpx2.Response:
+        self.requests.append(request)
+        page = self.pages.get(str(request.url), httpx2.Response(404))
+        return page.pop(0) if isinstance(page, list) else page
+
+    def fetcher(self) -> PageFetcher:
+        """A PageFetcher that fetches from this fake, without waiting."""
+        return PageFetcher(
+            httpx2.MockTransport(self._handle),
+            sleep=self.time.sleep,
+            clock=self.time.clock,
+        )
+
+    def fetch(self, url: str) -> Page:
+        return self.fetch_all([url])[0]
+
+    def fetch_all(self, urls: list[str]) -> list[Page]:
+        with self.fetcher() as fetcher:
+            return [fetcher.fetch(url) for url in urls]
