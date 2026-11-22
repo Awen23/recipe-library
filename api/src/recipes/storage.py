@@ -42,6 +42,7 @@ from recipes.chapters import Chapter, parse_chapters
 from recipes.links import Link, find_links
 from recipes.pages import Page
 from recipes.playlist import Playlist
+from recipes.recipe_data import PageRecipe
 from recipes.splitting import Recipe
 from recipes.youtube import Comment, Video
 
@@ -387,6 +388,108 @@ def save_pages(
                 for position, (link, page) in enumerate(fetched)
             ],
         )
+
+
+@dataclass(frozen=True)
+class RecipeName:
+    id: int
+    name: str
+
+
+@dataclass(frozen=True)
+class StoredPage:
+    """A fetched link, as `matching` needs it."""
+
+    url: str  # where it led, or as written when it didn't answer
+    link_text: str
+    outcome: str
+    recipe: PageRecipe | None
+
+
+@dataclass(frozen=True)
+class VideoToFill:
+    """A video with recipes that have no details yet, and its fetched pages."""
+
+    id: str
+    recipes: list[RecipeName]  # every recipe in the video, in order
+    to_fill: set[int]  # the IDs of those with no details yet
+    pages: list[StoredPage]  # in the order the links are written
+
+
+def videos_to_fill(engine: Engine) -> list[VideoToFill]:
+    """The live videos that have fetched pages and a recipe with no details."""
+    with engine.connect() as connection:
+        video_ids = list(
+            connection.scalars(
+                select(recipes.c.video_id)
+                .distinct()
+                .join(videos, videos.c.id == recipes.c.video_id)
+                .where(
+                    recipes.c.source.is_(None),
+                    videos.c.removed_at.is_(None),
+                    recipes.c.video_id.in_(select(recipe_pages.c.video_id)),
+                )
+                .order_by(recipes.c.video_id)
+            )
+        )
+        result = []
+        for video_id in video_ids:
+            rows = connection.execute(
+                select(recipes.c.id, recipes.c.name, recipes.c.source)
+                .where(recipes.c.video_id == video_id)
+                .order_by(recipes.c.position)
+            ).all()
+            pages = connection.execute(
+                select(recipe_pages)
+                .where(recipe_pages.c.video_id == video_id)
+                .order_by(recipe_pages.c.position)
+            ).all()
+            result.append(
+                VideoToFill(
+                    id=video_id,
+                    recipes=[RecipeName(row.id, row.name) for row in rows],
+                    to_fill={row.id for row in rows if row.source is None},
+                    pages=[
+                        StoredPage(
+                            url=page.final_url or page.url,
+                            link_text=page.link_text,
+                            outcome=page.outcome,
+                            recipe=PageRecipe(**page.recipe) if page.recipe else None,
+                        )
+                        for page in pages
+                    ],
+                )
+            )
+    return result
+
+
+@dataclass(frozen=True)
+class Details:
+    """A recipe's written recipe, and where it came from."""
+
+    source_url: str
+    ingredients: list[str] | None  # None when the page is only a place to look
+    method: list[str] | None
+    confidence: int | None  # 0-100, when it was matched by name
+
+
+def save_details(engine: Engine, found: dict[int, Details]) -> None:
+    """Fill in recipes' details, by recipe ID, in one transaction. A recipe that
+    already has details is left as it is."""
+    with engine.begin() as connection:
+        for recipe_id, details in found.items():
+            connection.execute(
+                update(recipes)
+                .where(recipes.c.id == recipe_id, recipes.c.source.is_(None))
+                .values(
+                    ingredients=details.ingredients,
+                    method=details.method,
+                    source="link",
+                    source_url=details.source_url,
+                    details_by="code",
+                    details_confidence=details.confidence,
+                )
+            )
 
 
 def _insert(

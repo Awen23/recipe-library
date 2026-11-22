@@ -9,7 +9,7 @@ from sqlalchemy import Engine
 
 from recipes import storage
 from recipes.ai import AIKeyError, Claude
-from recipes.building import build_recipes
+from recipes.building import build_recipes, fill_details
 from recipes.fetching import fetch_linked_pages
 from recipes.pages import Page, PageFetcher
 from recipes.playlist import fetch_playlist
@@ -30,7 +30,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     fetch.set_defaults(run=_fetch)
 
     build = commands.add_parser(
-        "build", help="split new videos into recipes, asking Claude"
+        "build",
+        help="split new videos into recipes, asking Claude, and fill in recipes "
+        "from the pages they link to",
     )
     build.set_defaults(run=_build)
 
@@ -93,6 +95,7 @@ def _build(_args: argparse.Namespace) -> int:
         f"Built {summary.recipes} recipes from {summary.videos} new videos "
         f"({summary.input_tokens} input and {summary.output_tokens} output tokens)."
     )
+    print(f"Filled in {fill_details(engine)} recipes from the pages videos link to.")
     for video_id, reason in summary.failed.items():
         print(
             f"error: {video_id}: {reason}. Run `recipes build` again.", file=sys.stderr

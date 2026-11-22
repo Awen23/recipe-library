@@ -1,7 +1,8 @@
-"""Work out the recipes in fetched videos: ask Claude, split, store.
+"""Work out the recipes in fetched videos: ask Claude, split, store. Then fill in
+their written recipes from the pages the videos link to.
 
-Only videos fetched since the last build are built, so recipes already in use are
-never changed.
+Only videos fetched since the last build are split, and only recipes with no details
+are filled in, so recipes already in use are never changed.
 """
 
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ from sqlalchemy import Engine
 
 from recipes import storage
 from recipes.ai import AIError, AIKeyError, Claude
+from recipes.matching import match_video
 from recipes.splitting import split_video
 
 
@@ -47,3 +49,14 @@ def build_recipes(engine: Engine, claude: Claude) -> BuildSummary:
         summary.input_tokens += reply.input_tokens
         summary.output_tokens += reply.output_tokens
     return summary
+
+
+def fill_details(engine: Engine) -> int:
+    """Give recipes with no details the written recipe their video's pages hold, and
+    return how many were filled."""
+    filled = 0
+    for video in storage.videos_to_fill(engine):
+        found = match_video(video)
+        storage.save_details(engine, found)
+        filled += len(found)
+    return filled
