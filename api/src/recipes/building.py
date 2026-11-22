@@ -1,7 +1,8 @@
-"""Work out the recipes in fetched videos: ask Claude, split, store.
+"""Work out the recipes in fetched videos: ask Claude, split, store. Then find each
+recipe's written recipe, in a linked page, the description or a creator comment.
 
-Only videos fetched since the last build are built, so recipes already in use are
-never changed.
+Only videos fetched since the last build are split, and each recipe's written recipe
+is only looked for once, so recipes already in use are never changed.
 """
 
 from dataclasses import dataclass, field
@@ -10,6 +11,7 @@ from sqlalchemy import Engine
 
 from recipes import storage
 from recipes.ai import AIError, AIKeyError, Claude
+from recipes.details import from_answer, links_for_claude, plain_details, readable_pages
 from recipes.splitting import split_video
 
 
@@ -47,3 +49,30 @@ def build_recipes(engine: Engine, claude: Claude) -> BuildSummary:
         summary.input_tokens += reply.input_tokens
         summary.output_tokens += reply.output_tokens
     return summary
+
+
+def fill_details(engine: Engine, claude: Claude) -> dict[str, str]:
+    """Look for the written recipe of each recipe that hasn't been looked at, and
+    store what's found, video by video. Returns the videos Claude couldn't answer
+    about, by ID, with why: they're left for the next build. A rejected API key stops
+    the build."""
+    failed: dict[str, str] = {}
+    # A video with links waits until they've been fetched.
+    unfetched = {video_id for video_id, _ in storage.videos_to_fetch_pages(engine)}
+    for video in storage.videos_to_fill(engine):
+        if video.id in unfetched:
+            continue
+        found = plain_details(video)
+        if found is None:
+            pages = readable_pages(video)
+            names = [recipe.name for recipe in video.recipes]
+            try:
+                reply = claude.find_details(video.text, names, links_for_claude(pages))
+            except AIKeyError:
+                raise
+            except AIError as error:
+                failed[video.id] = str(error)
+                continue
+            found = from_answer(video, pages, reply.answer)
+        storage.save_details(engine, found)
+    return failed

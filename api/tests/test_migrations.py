@@ -16,6 +16,7 @@ TABLES = {
     "chapters",
     "creator_comments",
     "recipes",
+    "recipe_links",
 }
 
 
@@ -62,6 +63,23 @@ def test_a_recipe_says_who_set_each_field(alembic_config: Config) -> None:
         with pytest.raises(IntegrityError):
             connection.execute(
                 insert(recipes).values(**recipe, name_by="guess", start_by="code")
+            )
+
+
+def test_details_say_who_set_them(alembic_config: Config) -> None:
+    """Not from the data: checks the rule added after the table, with a made-up
+    `details_by`."""
+    command.upgrade(alembic_config, "head")
+    with create_engine().begin() as connection:
+        connection.execute(insert(channels).values(id="UC1", title="A channel"))
+        connection.execute(insert(videos).values(**VIDEO, channel_id="UC1"))
+        recipe = {"video_id": VIDEO["id"], "position": 0, "name": "Mayak tofu"}
+
+        with pytest.raises(IntegrityError):
+            connection.execute(
+                insert(recipes).values(
+                    **recipe, name_by="code", start_by="code", details_by="guess"
+                )
             )
 
 

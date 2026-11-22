@@ -1,5 +1,5 @@
-"""Where fetched videos, Claude's answers and recipes are kept. All database access
-goes through this module.
+"""Where fetched videos and pages, and the recipes worked out from them, are kept.
+All database access goes through this module.
 
 The database is SQLite, at `data/recipes.db` unless `DATABASE_URL` says otherwise.
 Its tables are created by the migrations in `migrations/`: run `alembic upgrade head`.
@@ -7,7 +7,7 @@ Its tables are created by the migrations in `migrations/`: run `alembic upgrade 
 
 import os
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,6 +17,7 @@ from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Column,
@@ -38,7 +39,11 @@ from sqlalchemy import (
 
 from recipes.ai import VideoText
 from recipes.chapters import Chapter, parse_chapters
+from recipes.links import Link, find_links
+from recipes.models import Details, Line, RecipeName, StoredPage, VideoToFill
+from recipes.pages import Page
 from recipes.playlist import Playlist
+from recipes.recipe_data import PageRecipe
 from recipes.splitting import Recipe
 from recipes.youtube import Comment, Video
 
@@ -58,6 +63,10 @@ metadata = MetaData(
         "pk": "pk_%(table_name)s",
     }
 )
+
+# JSON that stores None as SQL NULL, not as the JSON text "null", so `IS NULL` finds
+# it.
+_JSON = JSON(none_as_null=True)
 
 # The tables below hold what the YouTube API returned, kept as it arrived, so recipes
 # can be worked out from it again without fetching. IDs are YouTube's own. Times are
@@ -113,14 +122,40 @@ creator_comments = Table(
     Column("published_at", DateTime, nullable=False),
 )
 
+# One row per link in a video's description or creator comments that may lead to a
+# written recipe (`links.find_links`), with what fetching it found. A video's links
+# are fetched once.
+recipe_links = Table(
+    "recipe_links",
+    metadata,
+    Column("video_id", String, ForeignKey("videos.id"), primary_key=True),
+    Column("url", String, primary_key=True),  # as written in the video
+    Column("position", Integer, nullable=False),  # 0, 1, 2… in the order written
+    Column("link_text", String, nullable=False),  # the words on the link's line
+    Column("final_url", String, nullable=True),  # after redirects, if it answered
+    Column("fetched_at", DateTime, nullable=False),
+    Column("outcome", String, nullable=False),  # see `pages`, such as "recipe"
+    # The page's first recipe, {"name", "ingredients", "method"}, when it has one.
+    Column("recipe", _JSON, nullable=True),
+    # The page's text, when it has no recipe data, for Claude to read the recipe from.
+    # Only its text, without the page's markup or scripts.
+    Column("page_text", Text, nullable=True),
+)
+
 
 # Who set a group of recipe fields: plain code, AI, or a correction by hand.
 SET_BY = ("code", "ai", "hand")
+# Where a recipe's written recipe was found.
+SOURCES = ("link", "description", "comment")
+
+
+def _one_of(column: str, allowed: Sequence[str]) -> CheckConstraint:
+    values = ", ".join(f"'{value}'" for value in allowed)
+    return CheckConstraint(f"{column} IN ({values})", name=column)
 
 
 def _set_by(column: str) -> CheckConstraint:
-    allowed = ", ".join(f"'{by}'" for by in SET_BY)
-    return CheckConstraint(f"{column} IN ({allowed})", name=column)
+    return _one_of(column, SET_BY)
 
 
 # The tables below are worked out from the fetched ones, by code and by AI.
@@ -143,12 +178,23 @@ recipes = Table(
     # Where the recipe starts in the video. Null when it isn't known.
     Column("start_seconds", Integer, nullable=True),
     Column("start_by", String, nullable=False),
+    # The written recipe, and where it came from. A build looks for them once, and
+    # `details_by` says who looked. The rest stay null when nothing was found.
+    # Lists of `models.Line`: {"text": "1 cup oats", "note": false}.
+    Column("ingredients", _JSON, nullable=True),
+    Column("method", _JSON, nullable=True),
+    Column("source", String, nullable=True),  # "link", "description" or "comment"
+    Column("source_url", String, nullable=True),  # the page, when it's from a link
+    Column("details_by", String, nullable=True),
+    Column("details_confidence", Integer, nullable=True),  # 0-100, how sure
     UniqueConstraint("video_id", "position"),
     ForeignKeyConstraint(
         ["video_id", "chapter_position"], ["chapters.video_id", "chapters.position"]
     ),
     _set_by("name_by"),
     _set_by("start_by"),
+    _set_by("details_by"),
+    _one_of("source", SOURCES),
     sqlite_autoincrement=True,  # what keeps `id`s from being reused
 )
 
@@ -249,38 +295,53 @@ def videos_to_build(engine: Engine) -> list[tuple[str, VideoText]]:
     about each. They're the ones with no recipes, since building gives every video
     at least one."""
     with engine.connect() as connection:
-        rows = connection.execute(
-            select(videos.c.id, videos.c.title, videos.c.description)
-            .where(
-                videos.c.removed_at.is_(None),
-                videos.c.id.not_in(select(recipes.c.video_id)),
+        video_ids = list(
+            connection.scalars(
+                select(videos.c.id)
+                .where(
+                    videos.c.removed_at.is_(None),
+                    videos.c.id.not_in(select(recipes.c.video_id)),
+                )
+                .order_by(videos.c.first_seen_at, videos.c.id)
             )
-            .order_by(videos.c.first_seen_at, videos.c.id)
-        ).all()
-        chapters_by_video: dict[str, list[Chapter]] = {}
-        for chapter in connection.execute(
-            select(chapters).order_by(chapters.c.video_id, chapters.c.position)
-        ):
-            chapters_by_video.setdefault(chapter.video_id, []).append(
-                Chapter(chapter.start_seconds, chapter.title)
-            )
-        comments_by_video: dict[str, list[str]] = {}
-        for comment in connection.execute(
-            select(creator_comments).order_by(creator_comments.c.published_at)
-        ):
-            comments_by_video.setdefault(comment.video_id, []).append(comment.text)
-    return [
-        (
-            row.id,
-            VideoText(
-                title=row.title,
-                description=row.description,
-                chapters=chapters_by_video.get(row.id, []),
-                creator_comments=comments_by_video.get(row.id, []),
-            ),
         )
-        for row in rows
-    ]
+        texts = _video_texts(connection, video_ids)
+    return [(video_id, texts[video_id]) for video_id in video_ids]
+
+
+def _video_texts(
+    connection: sqlalchemy.Connection, video_ids: Sequence[str]
+) -> dict[str, VideoText]:
+    """What Claude is shown about each video, by ID."""
+    chapters_by_video: dict[str, list[Chapter]] = {}
+    for chapter in connection.execute(
+        select(chapters)
+        .where(chapters.c.video_id.in_(video_ids))
+        .order_by(chapters.c.video_id, chapters.c.position)
+    ):
+        chapters_by_video.setdefault(chapter.video_id, []).append(
+            Chapter(chapter.start_seconds, chapter.title)
+        )
+    comments_by_video: dict[str, list[str]] = {}
+    for comment in connection.execute(
+        select(creator_comments)
+        .where(creator_comments.c.video_id.in_(video_ids))
+        .order_by(creator_comments.c.published_at)
+    ):
+        comments_by_video.setdefault(comment.video_id, []).append(comment.text)
+    return {
+        row.id: VideoText(
+            title=row.title,
+            description=row.description,
+            chapters=chapters_by_video.get(row.id, []),
+            creator_comments=comments_by_video.get(row.id, []),
+        )
+        for row in connection.execute(
+            select(videos.c.id, videos.c.title, videos.c.description).where(
+                videos.c.id.in_(video_ids)
+            )
+        )
+    }
 
 
 def save_recipes(engine: Engine, video_id: str, found: Sequence[Recipe]) -> None:
@@ -303,6 +364,129 @@ def save_recipes(engine: Engine, video_id: str, found: Sequence[Recipe]) -> None
                 for recipe in found
             ],
         )
+
+
+def videos_to_fetch_pages(engine: Engine) -> list[tuple[str, list[Link]]]:
+    """The live videos whose links haven't been fetched yet, by ID, with their links.
+    Videos with no links are left out."""
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(videos.c.id, videos.c.description)
+            .where(
+                videos.c.removed_at.is_(None),
+                videos.c.id.not_in(select(recipe_links.c.video_id)),
+            )
+            .order_by(videos.c.first_seen_at, videos.c.id)
+        ).all()
+        comments_by_video: dict[str, list[str]] = {}
+        for comment in connection.execute(
+            select(creator_comments).order_by(creator_comments.c.published_at)
+        ):
+            comments_by_video.setdefault(comment.video_id, []).append(comment.text)
+    found = [
+        (row.id, find_links(row.description, comments_by_video.get(row.id, [])))
+        for row in rows
+    ]
+    return [(video_id, links) for video_id, links in found if links]
+
+
+def save_pages(
+    engine: Engine,
+    video_id: str,
+    fetched: Sequence[tuple[Link, Page]],
+    *,
+    now: datetime | None = None,
+) -> None:
+    """Store what fetching each of a video's links found, in one transaction."""
+    now = now or _utc_now()
+    with engine.begin() as connection:
+        _insert(
+            connection,
+            recipe_links,
+            [
+                {
+                    "video_id": video_id,
+                    "url": link.url,
+                    "position": position,
+                    "link_text": link.text,
+                    "final_url": page.final_url,
+                    "fetched_at": now,
+                    "outcome": page.outcome,
+                    "recipe": asdict(page.recipe) if page.recipe else None,
+                    "page_text": page.text,
+                }
+                for position, (link, page) in enumerate(fetched)
+            ],
+        )
+
+
+def videos_to_fill(engine: Engine) -> list[VideoToFill]:
+    """The live videos with a recipe whose details haven't been looked for."""
+    with engine.connect() as connection:
+        video_ids = list(
+            connection.scalars(
+                select(recipes.c.video_id)
+                .distinct()
+                .join(videos, videos.c.id == recipes.c.video_id)
+                .where(recipes.c.details_by.is_(None), videos.c.removed_at.is_(None))
+                .order_by(recipes.c.video_id)
+            )
+        )
+        texts = _video_texts(connection, video_ids)
+        result = []
+        for video_id in video_ids:
+            rows = connection.execute(
+                select(recipes.c.id, recipes.c.name, recipes.c.details_by)
+                .where(recipes.c.video_id == video_id)
+                .order_by(recipes.c.position)
+            ).all()
+            pages = connection.execute(
+                select(recipe_links)
+                .where(recipe_links.c.video_id == video_id)
+                .order_by(recipe_links.c.position)
+            ).all()
+            result.append(
+                VideoToFill(
+                    id=video_id,
+                    text=texts[video_id],
+                    recipes=[RecipeName(row.id, row.name) for row in rows],
+                    to_fill={row.id for row in rows if row.details_by is None},
+                    pages=[
+                        StoredPage(
+                            url=page.final_url or page.url,
+                            link_text=page.link_text,
+                            outcome=page.outcome,
+                            recipe=PageRecipe(**page.recipe) if page.recipe else None,
+                            text=page.page_text,
+                        )
+                        for page in pages
+                    ],
+                )
+            )
+    return result
+
+
+def save_details(engine: Engine, found: dict[int, Details]) -> None:
+    """Store what was found for each recipe, by ID, in one transaction. A recipe
+    whose details have already been looked for is left as it is."""
+    with engine.begin() as connection:
+        for recipe_id, details in found.items():
+            connection.execute(
+                update(recipes)
+                .where(recipes.c.id == recipe_id, recipes.c.details_by.is_(None))
+                .values(
+                    ingredients=_lines(details.ingredients),
+                    method=_lines(details.method),
+                    source=details.source,
+                    source_url=details.source_url,
+                    details_by=details.by,
+                    details_confidence=details.confidence,
+                )
+            )
+
+
+def _lines(lines: Sequence[Line] | None) -> list[dict[str, Any]] | None:
+    return None if lines is None else [asdict(line) for line in lines]
 
 
 def _insert(

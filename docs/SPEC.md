@@ -15,13 +15,21 @@ I don't yet know what the data looks like, so the plan starts by finding out. On
 ## 2. Phases
 1. **Understand the playlist.** Fetch it, and measure what's actually there: how recipes are split across videos, how Shorts differ, and where recipe details live. *(Done: findings in Section 4.)*
 2. **Useful info for every recipe.** Split each video into its recipes, each with a name, a start time where there is one, and its ingredients and method wherever they can be found. Plain code does what it can, and AI does the parts Phase 1 showed plain code can't. *(Planned in Section 5.)*
-3. **Rating and sorting.** Hide the recipes in a multi-recipe video that I'm not interested in, and rate my interest in the rest, so the library can be filtered down to what I'd actually cook.
-4. **The UI.** A deployed web app (Python API, React + TypeScript frontend) for searching, filtering and rating the library.
+3. **Rating, sorting and search.** Everything the UI needs from the data. Hide the recipes in a multi-recipe video that I'm not interested in, and rate my interest in the rest, so the library can be filtered down to what I'd actually cook. Search over names and ingredients, in one function, with searchable ingredient names. Tidy what the library shows, such as videos that aren't recipes.
+4. **The API.** FastAPI routes to list, search and filter recipes, rate or hide them, and refresh the playlist in the background, with response models that give the frontend its types. Access control, so only I can change ratings or start a refresh. Run locally: nothing is deployed yet.
+5. **The UI, deployed.** A React + TypeScript frontend for searching, filtering and rating the library, built on the API. Then the whole app is deployed to Fly.io, with backups of the database.
 
 ## 3. Later
 Ideas deferred while we focus on the current phase. Added to as we discuss and defer things.
 - **Videos that aren't recipes** (a talk, a haul): they're kept as one recipe named after the video, so they can be found. The UI could hide them, and they could get a better name than the video's title.
 - **Refreshing the library from the app** (e.g. a "refresh playlist" button), instead of running a fetch command.
+- **robots.txt:** check each site's before fetching its pages. Every link is one a creator chose, so for now they're fetched like a person following them would.
+- **Links that failed** (a timeout, a busy site) are fetched once and not tried again.
+- **Searchable ingredient names**, such as "leeks" from "1-2 leeks, chopped or a few handfuls spinach", for the UI's search. Ingredient lines are kept as written for now.
+- **A dish made to go inside another** (meatballs for a meatball sub) is sometimes listed as two recipes. Splitting could merge them.
+- **Recipe pages laid out as tables** (javligtgott.se, 2 pages): the name and amount are in separate cells, so most lines are lost when the page's text is read. Keeping each table row on one line would fix it.
+- **Links to other videos** (YouTube, TikTok, Instagram): some creators link the video a recipe was shown in. That video's description could be read for the ingredients.
+- **Addresses behind hostnames:** links to this computer or to private IP addresses are refused, but a hostname that resolves to one isn't checked yet. Add it before the app is hosted.
 - **Other people's playlists:** sign in with Google (`youtube.readonly` scope, which needs Google's app verification for a public launch). Before anyone else uses the app, move from SQLite to Postgres.
 
 Out of scope: transcripts and audio (official captions only work for your own videos, and scrapers break YouTube's terms), and dietary filters.
@@ -93,7 +101,7 @@ Counts are from the 434 available videos. "Shorts" means 3 minutes or less, beca
 ## 5. Phase 2: useful info for every recipe
 
 ### Goal
-Every video becomes one or more **recipes**, ready for rating (Phase 3) and the UI (Phase 4). Each recipe has:
+Every video becomes one or more **recipes**, ready for rating (Phase 3), the API (Phase 4) and the UI (Phase 5). Each recipe has:
 - a name
 - its video
 - a start time, or none if the description has no timestamp for it
@@ -106,7 +114,7 @@ Each video also keeps its **thumbnail**, its **channel**, and whether it can be 
 - **Fetched data and recipes are kept apart.** Videos, comments and fetched recipe pages are stored as they arrived. Recipes are worked out from them, so working them out never needs another fetch.
 - **Fetching and building again only add new videos and their recipes.** Stored videos and recipes are left as they are, since they're already in use. A video that leaves the playlist is marked as removed, not deleted, and its recipes go with it.
 - **Each recipe gets an ID when it's created, and keeps it,** so Phase 3's ratings stay attached.
-- **Each field records who set it:** plain code, AI (with how sure it was), or a correction I made by hand. Building never changes a stored recipe, so hand corrections are never overwritten.
+- **Each field records who set it:** plain code, AI (with how sure it was), or a correction I made by hand. Building never overwrites a stored field: it only fills in details that are still empty, so hand corrections are kept.
 - **The tables are designed up front, and each PR creates the ones it fills,** with an Alembic migration. All database access goes through `storage.py`.
 
 ### Tables
@@ -122,8 +130,8 @@ Worked out, created in later PRs:
   - `name`, with `name_by` and `name_confidence`
   - `start_seconds`, with `start_by`
   - Each `_by` is `code`, `ai` or `hand`. Code and AI skip any group whose `_by` is `hand`.
-  - PR 3 adds the details: `ingredients` (a JSON list), `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four.
-- **`recipe_pages`** (PR 3): each linked page as fetched: its URL, where it redirected to, when it was fetched, what was found (such as `recipe`, `no recipe data` or `HTTP 403`), and its schema.org `Recipe` data.
+  - PR 3 adds the details: `ingredients` and `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four. `ingredients` and `method` are JSON lists of lines, `{"text": "1 cup oats", "note": false}`, in the order written. A note the creator wrote among them ("*soaked overnight") stays where it was written, with `note` true, so the UI can show it there in its own style.
+- **`recipe_links`** (PR 3): each linked page as fetched: its URL, the words beside the link, where it redirected to, when it was fetched, what was found (such as `recipe`, `no recipe data` or `HTTP 403`), and the name, ingredients and steps of its first schema.org `Recipe`. A page with no `Recipe` data keeps its text instead (not its markup), for AI to read the recipe from.
 
 ### PRs
 An outline only. Each PR is planned in detail before it starts, and its architecture decisions are made then, such as which AI model to use. Each PR uses AI where plain code can't do the job, so no PR leaves recipes half-right. The first PR to use AI sets it up.
@@ -139,15 +147,12 @@ An outline only. Each PR is planned in detail before it starts, and its architec
 - **Plain code:** a recipe starts where its chapter starts. When a chapter holds several recipes, only the first gets the start. A video where Claude finds no recipe is one recipe named after the video, so every video can be found. Without an answer (Claude declined), each chapter is a recipe named after the chapter.
 - *Model:* Haiku 5.5, Sonnet 5.5 and Opus 5.5 were compared on 30 labelled videos, picked by type. Haiku matched as many recipe counts as Opus, so the cheapest model is used.
 
-PRs 3 and 4 look for each recipe's details one place at a time, most common first, and stop at the first place that has its ingredients. Linked pages come first: they're the most common source, and reading them needs no AI.
-
-**3. Details from links**
-- **Plain code:** fetch each linked page that isn't social media or a shop, keep it in `recipe_pages`, and read its schema.org `Recipe` data (`recipeIngredient`, `recipeInstructions`).
-
-**4. Details from text**
-For recipes still without details:
-- **Plain code:** skip any text with no ingredient-like lines (amounts such as "2 tbsp" or "400g", or an "Ingredients" heading), so AI only reads text that's likely to hold a recipe.
-- **AI:** find the ingredients and method in the description first, then in the creator's comment. This covers matching them to the right recipe when one description covers several, leaving out lines that aren't ingredients ("Save 10% on…"), and tidying lines such as "1-2 leeks, chopped or a few handfuls spinach" into ingredient names that can be searched.
+**3. Details** *(done)*
+Each recipe's ingredients and method, from a linked page, the description or a creator comment. Linked pages come first: they're the most common source, and their recipe data needs no AI to read.
+- `recipes fetch` also fetches the links in new videos' descriptions and creator comments, skipping social media, shops and sponsors, and keeps what each led to in `recipe_links`. A video's links are fetched once, and a page that asks for a browser check is left alone.
+- **Plain code:** recipe-scrapers reads each page's schema.org `Recipe` data, in JSON-LD or Microdata. A video with one recipe and a link to a page with recipe data takes that page. A video with no readable link and nothing recipe-like in its text (an "Ingredients" heading, amounts such as "2 tbsp" or "400g", or chapters that may be steps) is marked as looked at, without asking AI.
+- **AI** (Claude Haiku 5.5, one structured answer per remaining video): for each recipe, picks the link whose page holds it, or copies its ingredient lines and method from the text of a linked page with no recipe data, the description or a creator comment. Step chapters can be the method, and a method is kept even when no ingredients are written. This covers names in another language from the links ("kåldolmar" for cabbage dumplings), one link for all of a video's recipes, matching lines to the right recipe when one description covers several, and leaving out lines that aren't ingredients ("Save 10% on…"). A page's ingredients are read from the page, not copied by AI, and a line AI copies is kept only if it's really in the text.
+- Each recipe's details are looked for once: `details_by` says who looked, even when nothing was found.
 
 *Done when:* the numbers roughly match what Phase 1 found, so anything the code misses shows up.
 - **Recipes:** about 740, and every available video has at least one.

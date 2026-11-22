@@ -9,7 +9,9 @@ from sqlalchemy import Engine
 
 from recipes import storage
 from recipes.ai import AIKeyError, Claude
-from recipes.building import build_recipes
+from recipes.building import build_recipes, fill_details
+from recipes.fetching import fetch_linked_pages
+from recipes.pages import Page, PageFetcher
 from recipes.playlist import fetch_playlist
 from recipes.youtube import YouTubeClient, YouTubeError
 
@@ -20,13 +22,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     commands = parser.add_subparsers(required=True, metavar="command")
 
     fetch = commands.add_parser(
-        "fetch", help="fetch a playlist's new videos into the database"
+        "fetch",
+        help="fetch a playlist's new videos, and the pages they link to, into the "
+        "database",
     )
     fetch.add_argument("playlist_id", help="the ID after `list=` in its URL")
     fetch.set_defaults(run=_fetch)
 
     build = commands.add_parser(
-        "build", help="split new videos into recipes, asking Claude"
+        "build",
+        help="split new videos into recipes, and find each one's ingredients and "
+        "method, asking Claude",
     )
     build.set_defaults(run=_build)
 
@@ -58,7 +64,18 @@ def _fetch(args: argparse.Namespace) -> int:
         f"Skipped {playlist.unavailable_count} deleted or private. "
         f"Marked {summary.removed} as removed from the playlist."
     )
+
+    with PageFetcher() as fetcher:
+        pages = fetch_linked_pages(engine, fetcher, on_video=_print_pages)
+    print(
+        f"Fetched {pages.links} links from {pages.videos} videos "
+        f"({pages.recipes} with a recipe)."
+    )
     return 0
+
+
+def _print_pages(video_id: str, pages: list[Page]) -> None:
+    print(f"  {video_id}: {', '.join(page.outcome for page in pages)}", flush=True)
 
 
 def _build(_args: argparse.Namespace) -> int:
@@ -70,6 +87,7 @@ def _build(_args: argparse.Namespace) -> int:
     try:
         with Claude(api_key) as claude:
             summary = build_recipes(engine, claude)
+            details_failed = fill_details(engine, claude)
     except AIKeyError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -78,11 +96,12 @@ def _build(_args: argparse.Namespace) -> int:
         f"Built {summary.recipes} recipes from {summary.videos} new videos "
         f"({summary.input_tokens} input and {summary.output_tokens} output tokens)."
     )
-    for video_id, reason in summary.failed.items():
+    failed = summary.failed | details_failed
+    for video_id, reason in failed.items():
         print(
             f"error: {video_id}: {reason}. Run `recipes build` again.", file=sys.stderr
         )
-    return 1 if summary.failed else 0
+    return 1 if failed else 0
 
 
 def _secret(name: str) -> str | None:
