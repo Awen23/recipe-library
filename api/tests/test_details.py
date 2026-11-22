@@ -271,3 +271,22 @@ def test_copied_lines_drops_links_in_a_line() -> None:
     assert copied_lines([line], f"Ingredients:\n{line}\n") == [
         "150 g vital wheat gluten"
     ]
+
+
+@pytest.mark.parametrize(
+    ("line", "written"),
+    [
+        # From SdN3xM_xALg's description and 8XRGh5C52x8's creator comment.
+        ("1/2 cup cashews*", "💛 1/2 cup cashews*"),
+        ("1 tablespoon olive oil, 15mL", "▢1 tablespoon olive oil, 15mL"),
+        # From N_HsFfFg38g, which writes a recipe's ingredients on one line.
+        (
+            "2x garlic",
+            "- red lentil minestrone | (4) {1x onion; 2x garlic; 2x carrots}",
+        ),
+    ],
+)
+def test_copied_lines_may_leave_out_symbols_and_split_items(
+    line: str, written: str
+) -> None:
+    assert copied_lines([line], written) == [line]

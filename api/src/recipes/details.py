@@ -18,13 +18,16 @@ from recipes.storage import Details, StoredPage, VideoToFill
 # "Ingredients" heading, but not a timestamp like "1:42 Breakfasts". A video needs a
 # few before its text is worth reading.
 _INGREDIENT_LINE = re.compile(
-    r"^[\s\-•*·]*(?!\d{1,2}:\d{2})(?:\d|[½¼¾⅓⅔⅛]|a (?:pinch|handful)|ingredients)",
+    r"^\W*(?!\d{1,2}:\d{2})(?:\d|[½¼¾⅓⅔⅛]|a (?:pinch|handful)|ingredients)",
     re.IGNORECASE | re.MULTILINE,
 )
 MIN_INGREDIENT_LINES = 3
 _LINK = re.compile(r"https?://[^\s)]+")
-# A bullet, or a step's number like "1." or "2)", which Claude is told to leave out.
-_LINE_START = re.compile(r"^[\s\-•*·▪➤→]*(?:\d+[.)]\s+)?")
+# A bullet or emoji, or a step's number like "1." or "2)", which Claude is told to
+# leave out.
+_LINE_START = re.compile(r"^\W*(?:\d+[.)]\s+)?")
+# What separates ingredients some creators write on one line: "{1x onion; 2x garlic}".
+_ITEM_BREAK = re.compile(r"[;{}|]")
 
 
 def plain_details(video: VideoToFill) -> dict[int, Details] | None:
@@ -106,10 +109,14 @@ def from_answer(
 
 
 def copied_lines(lines: Sequence[str], text: str) -> list[str]:
-    """The lines that are whole lines of `text`, ignoring case, spacing and any
-    bullet or step number, so nothing Claude wrote or shortened itself is stored as
-    the creator's recipe. Links in a line, often to a shop, are dropped."""
-    written = {_squash(_LINE_START.sub("", line)) for line in text.splitlines()}
+    """The lines that are whole lines of `text`, or items on one, ignoring case,
+    spacing and any bullet or step number, so nothing Claude wrote or shortened
+    itself is stored as the creator's recipe. Links in a line, often to a shop, are
+    dropped."""
+    lines_and_items = [
+        part for line in text.splitlines() for part in [line, *_ITEM_BREAK.split(line)]
+    ]
+    written = {_squash(_LINE_START.sub("", part)) for part in lines_and_items}
     return [
         _without_links(line)
         for line in lines
