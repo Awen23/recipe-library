@@ -63,6 +63,10 @@ metadata = MetaData(
     }
 )
 
+# JSON that stores None as SQL NULL, not as the JSON text "null", so `IS NULL` finds
+# it.
+_JSON = JSON(none_as_null=True)
+
 # The tables below hold what the YouTube API returned, kept as it arrived, so recipes
 # can be worked out from it again without fetching. IDs are YouTube's own. Times are
 # UTC. Columns are NOT NULL unless they say otherwise.
@@ -132,7 +136,7 @@ recipe_pages = Table(
     Column("outcome", String, nullable=False),  # see `pages`, such as "recipe"
     # The page's first recipe, {"name", "ingredients", "method"}, when it has one.
     # Not the page itself, which is the site's own writing.
-    Column("recipe", JSON, nullable=True),
+    Column("recipe", _JSON, nullable=True),
 )
 
 
@@ -167,8 +171,8 @@ recipes = Table(
     Column("start_by", String, nullable=False),
     # The written recipe, and where it came from. All null until a build finds one,
     # and a build only fills them while `source` is null.
-    Column("ingredients", JSON, nullable=True),  # list of lines, such as "1 cup oats"
-    Column("method", JSON, nullable=True),  # list of steps
+    Column("ingredients", _JSON, nullable=True),  # list of lines, such as "1 cup oats"
+    Column("method", _JSON, nullable=True),  # list of steps
     Column("source", String, nullable=True),  # where it was found: "link"
     Column("source_url", String, nullable=True),  # the page, when it's from a link
     Column("details_by", String, nullable=True),

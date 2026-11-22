@@ -81,3 +81,14 @@ def test_keeps_where_a_short_link_led(fetched: Engine) -> None:
             )
         ).one()
     assert (final_url, outcome) == (substack, "no recipe data")
+
+
+def test_a_page_without_a_recipe_stores_null(
+    fetched: Engine, fake_web: FakeWeb
+) -> None:
+    with fake_web.fetcher() as fetcher:
+        fetch_linked_pages(fetched, fetcher)
+
+    with fetched.connect() as connection:
+        query = select(recipe_pages.c.url).where(recipe_pages.c.recipe.is_(None))
+        assert len(connection.execute(query).all()) == 7  # SQL NULL, not "null"
