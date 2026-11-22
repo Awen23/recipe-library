@@ -20,6 +20,7 @@ I don't yet know what the data looks like, so the plan starts by finding out. On
 
 ## 3. Later
 Ideas deferred while we focus on the current phase. Added to as we discuss and defer things.
+- **Videos that aren't recipes** (a talk, a haul): they're kept as one recipe named after the video, so they can be found. The UI could hide them, and they could get a better name than the video's title.
 - **Refreshing the library from the app** (e.g. a "refresh playlist" button), instead of running a fetch command.
 - **Other people's playlists:** sign in with Google (`youtube.readonly` scope, which needs Google's app verification for a public launch). Before anyone else uses the app, move from SQLite to Postgres.
 
