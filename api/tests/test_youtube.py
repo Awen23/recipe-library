@@ -51,6 +51,7 @@ def test_video_from_api_maps_youtube_fields_to_ours() -> None:
         ),
         duration_seconds=25,
         published_at="2022-03-16T22:36:39Z",
+        channel_id="UC1F8Add7s3dEDmweoWLJkdg",
         channel_title="Capri Lilly",
         thumbnail_url="https://i.ytimg.com/vi/gOxwhuntyMY/mqdefault.jpg",
         embeddable=True,

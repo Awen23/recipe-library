@@ -32,6 +32,7 @@ class Video:
     description: str
     duration_seconds: int
     published_at: str
+    channel_id: str  # stays the same if the channel is renamed
     channel_title: str
     thumbnail_url: str
     embeddable: bool  # whether the creator lets other sites show it in an iframe
@@ -46,6 +47,7 @@ class Video:
             description=snippet["description"],
             duration_seconds=parse_duration(item["contentDetails"]["duration"]),
             published_at=snippet["publishedAt"],
+            channel_id=snippet["channelId"],
             channel_title=snippet["channelTitle"],
             # 320x180, the same shape as the video. Every video has this size.
             thumbnail_url=snippet["thumbnails"]["medium"]["url"],

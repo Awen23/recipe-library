@@ -36,6 +36,7 @@ def test_save_writes_the_playlist_as_json(tmp_path: Path) -> None:
                 "you enjoy ☺️",
                 "duration_seconds": 1157,
                 "published_at": "2025-06-17T08:39:43Z",
+                "channel_id": "UCS_S4EpORZwt8x9r6Mvjs7Q",
                 "channel_title": "Amanda Ducks",
                 "thumbnail_url": "https://i.ytimg.com/vi/whr7iOKRXTA/mqdefault.jpg",
                 "embeddable": True,
