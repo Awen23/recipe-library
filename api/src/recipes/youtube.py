@@ -33,6 +33,8 @@ class Video:
     duration_seconds: int
     published_at: str
     channel_title: str
+    thumbnail_url: str
+    embeddable: bool  # whether the creator lets other sites show it in an iframe
 
     @classmethod
     def from_api(cls, item: dict[str, Any]) -> Self:
@@ -45,6 +47,9 @@ class Video:
             duration_seconds=parse_duration(item["contentDetails"]["duration"]),
             published_at=snippet["publishedAt"],
             channel_title=snippet["channelTitle"],
+            # 320x180, the same shape as the video. Every video has this size.
+            thumbnail_url=snippet["thumbnails"]["medium"]["url"],
+            embeddable=item["status"]["embeddable"],
         )
 
 
@@ -102,7 +107,7 @@ class YouTubeClient:
         """
         videos: list[Video] = []
         for batch in batched(video_ids, PAGE_SIZE, strict=False):
-            params = {"part": "snippet,contentDetails", "id": ",".join(batch)}
+            params = {"part": "snippet,contentDetails,status", "id": ",".join(batch)}
             page = self._get("videos", params)
             videos.extend(Video.from_api(item) for item in page["items"])
         return videos

@@ -51,7 +51,19 @@ def test_video_from_api_maps_youtube_fields_to_ours() -> None:
         duration_seconds=25,
         published_at="2022-03-16T22:36:39Z",
         channel_title="Capri Lilly",
+        thumbnail_url="https://i.ytimg.com/vi/gOxwhuntyMY/mqdefault.jpg",
+        embeddable=True,
     )
+
+
+def test_video_from_api_knows_when_embedding_is_turned_off() -> None:
+    [item] = [
+        item
+        for item in read_fixture("videos.json")["items"]
+        if item["id"] == "eG0tXlljTtI"
+    ]
+
+    assert Video.from_api(item).embeddable is False
 
 
 def test_playlist_video_ids_asks_for_the_playlist(fake_api: FakeYouTubeApi) -> None:
@@ -125,7 +137,7 @@ def test_videos_returns_only_what_the_api_describes(fake_api: FakeYouTubeApi) ->
     # Our part: every listed ID is asked for, including the deleted one.
     [videos_request] = fake_api.requests
     assert videos_request.url.params["id"] == "whr7iOKRXTA,nHr9LqK3PKc,Iop_LKTis_U"
-    assert videos_request.url.params["part"] == "snippet,contentDetails"
+    assert videos_request.url.params["part"] == "snippet,contentDetails,status"
     # The API's part: the deleted Iop_LKTis_U has no details, so no Video for it.
     assert [video.id for video in videos] == ["whr7iOKRXTA", "nHr9LqK3PKc"]
 
