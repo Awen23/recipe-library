@@ -1,4 +1,4 @@
-"""The `recipes` command line. Run `recipes <playlist-id>` from `api/`."""
+"""The `recipes` command line. Run `recipes --help` from `api/` for its commands."""
 
 import argparse
 import sys
@@ -13,12 +13,20 @@ from recipes.youtube import YouTubeClient, YouTubeError
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line with `argv` (default: `sys.argv`). Returns the exit code."""
-    parser = argparse.ArgumentParser(
-        prog="recipes", description="Fetch a playlist into the database."
-    )
-    parser.add_argument("playlist_id", help="The ID after `list=` in its URL.")
-    args = parser.parse_args(argv)
+    parser = argparse.ArgumentParser(prog="recipes")
+    commands = parser.add_subparsers(required=True, metavar="command")
 
+    fetch = commands.add_parser(
+        "fetch", help="fetch a playlist's new videos into the database"
+    )
+    fetch.add_argument("playlist_id", help="the ID after `list=` in its URL")
+    fetch.set_defaults(run=_fetch)
+
+    args = parser.parse_args(argv)
+    return args.run(args)
+
+
+def _fetch(args: argparse.Namespace) -> int:
     api_key = dotenv_values(find_dotenv(usecwd=True)).get("YOUTUBE_API_KEY")
     if not api_key:
         print("error: YOUTUBE_API_KEY is not set. Add it to .env.", file=sys.stderr)

@@ -18,7 +18,7 @@ ruff format .                          # format
 mypy                                   # type check
 
 alembic upgrade head                   # create or update the database, data/recipes.db
-recipes <playlist-id>                  # fetch the playlist into the database
+recipes fetch <playlist-id>            # fetch the playlist's new videos into the database
 alembic revision --autogenerate -m "describe the change"   # write a migration after changing the tables in storage.py
 
 pip-compile --generate-hashes --strip-extras -o requirements.txt pyproject.toml   # re-lock runtime deps after changing them

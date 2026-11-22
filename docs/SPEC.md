@@ -50,7 +50,7 @@ Only code worth keeping is merged. Exploration isn't a PR.
 
 **PR 2: Fetch and chapters** *(done, the only code kept from this phase)*
 - *Before starting:* the playlist is set to unlisted, and a YouTube Data API key exists.
-- A `recipes <playlist-id>` command (the ID isn't a secret): pages through `playlistItems.list`, then fetches details with `videos.list` in batches of 50 (title, description, duration, publish date, channel). Deleted or private videos are skipped and counted.
+- A `recipes fetch <playlist-id>` command (the ID isn't a secret): pages through `playlistItems.list`, then fetches details with `videos.list` in batches of 50 (title, description, duration, publish date, channel). Deleted or private videos are skipped and counted.
 - The results are saved as a git-ignored JSON file. No database yet.
 - A chapter parser: description text in, list of chapters (start time in seconds, title) out, handling the formats the real descriptions use.
 - Tests never call the live API. They use small fixtures in `tests/fixtures/`: trimmed copies of real API responses (a few videos, with the playlist ID replaced) and real description lines.
@@ -129,7 +129,7 @@ An outline only. Each PR is planned in detail before it starts, and its architec
 
 **1. Fetched data in SQLite** *(done)*
 - SQLite through SQLAlchemy Core, with tables created and changed by Alembic migrations.
-- `recipes <playlist-id>` stores new videos with their channels, chapters and creator comments, and marks videos that have left the playlist as removed.
+- `recipes fetch <playlist-id>` stores new videos with their channels, chapters and creator comments, and marks videos that have left the playlist as removed.
 - *Plain code only.*
 
 **2. Recipes**

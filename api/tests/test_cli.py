@@ -30,7 +30,7 @@ def test_fetch_saves_the_playlist(
     fake_client = partial(YouTubeClient, transport=fake_api.transport)
     monkeypatch.setattr(cli, "YouTubeClient", fake_client)
 
-    assert cli.main(["PLAYLIST_ID"]) == 0
+    assert cli.main(["fetch", "PLAYLIST_ID"]) == 0
 
     with engine.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(videos)) == 5
@@ -43,7 +43,7 @@ def test_fetch_without_an_api_key_says_how_to_set_one(
 ) -> None:
     Path(".env").unlink()
 
-    assert cli.main(["PLAYLIST_ID"]) == 1
+    assert cli.main(["fetch", "PLAYLIST_ID"]) == 1
     assert "YOUTUBE_API_KEY is not set" in capsys.readouterr().err
 
 
@@ -57,6 +57,14 @@ def test_fetch_before_migrating_says_how_to_create_the_tables(
     )
 
     # The test runs in an empty folder, so data/recipes.db is new, with no migrations.
-    assert cli.main(["PLAYLIST_ID"]) == 1
+    assert cli.main(["fetch", "PLAYLIST_ID"]) == 1
     assert "alembic upgrade head" in capsys.readouterr().err
     assert fake_api.requests == []  # nothing was fetched
+
+
+def test_no_command_shows_the_usage(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main([])
+
+    assert exit_info.value.code == 2
+    assert "usage: recipes" in capsys.readouterr().err
