@@ -9,7 +9,8 @@ from recipes.ai import Claude
 from recipes.building import DetailsSummary, build_recipes, fill_details
 from recipes.details import copied_lines, from_answer, plain_details, readable_pages
 from recipes.fetching import fetch_linked_pages
-from recipes.storage import Details, recipes, videos_to_fill
+from recipes.models import Details
+from recipes.storage import recipes, videos_to_fill
 
 from fakes import FakeClaudeApi, read_fixture, recipe_web, recorded_details
 
@@ -142,8 +143,12 @@ def test_videos_wait_until_their_links_are_fetched(
     with Claude("test-key", transport=fake_claude.transport) as claude:
         build_recipes(fetched, claude)
 
-    # Only the seitan video has no links to fetch.
-    assert [video.id for video in videos_to_fill(fetched)] == [SEITAN_ID]
+    fill(fetched, fake_claude)  # before `recipes fetch` has fetched any links
+
+    # Only the seitan video has no links to fetch, so only it was looked at.
+    looked_at = {v.id for v in videos_to_fill(fetched)}
+    assert SEITAN_ID not in looked_at
+    assert len(looked_at) == 4
 
 
 def test_copied_lines_keeps_only_lines_in_the_text() -> None:

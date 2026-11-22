@@ -66,7 +66,11 @@ def fill_details(engine: Engine, claude: Claude) -> DetailsSummary:
     store what's found, video by video. A video Claude can't answer about is left
     for the next build. A rejected API key stops the build."""
     summary = DetailsSummary()
+    # A video with links waits until they've been fetched.
+    unfetched = {video_id for video_id, _ in storage.videos_to_fetch_pages(engine)}
     for video in storage.videos_to_fill(engine):
+        if video.id in unfetched:
+            continue
         found = plain_details(video)
         if found is None:
             pages = readable_pages(video)

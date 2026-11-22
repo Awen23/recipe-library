@@ -11,8 +11,8 @@ import re
 from collections.abc import Sequence
 
 from recipes.ai import DetailsAnswer, LinkText
+from recipes.models import Details, StoredPage, VideoToFill
 from recipes.pages import NO_RECIPE, RECIPE
-from recipes.storage import Details, StoredPage, VideoToFill
 
 # What makes a video's text worth Claude reading: an ingredients heading (English,
 # Swedish or German), or a few amounts. An amount starts a line, like "2 tomatoes"

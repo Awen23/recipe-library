@@ -40,6 +40,7 @@ from sqlalchemy import (
 from recipes.ai import VideoText
 from recipes.chapters import Chapter, parse_chapters
 from recipes.links import Link, find_links
+from recipes.models import Details, RecipeName, StoredPage, VideoToFill
 from recipes.pages import Page
 from recipes.playlist import Playlist
 from recipes.recipe_data import PageRecipe
@@ -415,50 +416,18 @@ def save_pages(
         )
 
 
-@dataclass(frozen=True)
-class RecipeName:
-    id: int
-    name: str
-
-
-@dataclass(frozen=True)
-class StoredPage:
-    """A fetched link, as working out details needs it."""
-
-    url: str  # where it led, or as written when it didn't answer
-    link_text: str
-    outcome: str
-    recipe: PageRecipe | None
-
-
-@dataclass(frozen=True)
-class VideoToFill:
-    """A video with recipes whose details haven't been looked for, with what it
-    holds."""
-
-    id: str
-    text: VideoText
-    recipes: list[RecipeName]  # every recipe in the video, in order
-    to_fill: set[int]  # the IDs of those whose details haven't been looked for
-    pages: list[StoredPage]  # in the order the links are written
-
-
 def videos_to_fill(engine: Engine) -> list[VideoToFill]:
-    """The live videos with a recipe whose details haven't been looked for. A video
-    with links is left out until its links have been fetched."""
-    unfetched = {video_id for video_id, _ in videos_to_fetch_pages(engine)}
+    """The live videos with a recipe whose details haven't been looked for."""
     with engine.connect() as connection:
-        video_ids = [
-            video_id
-            for video_id in connection.scalars(
+        video_ids = list(
+            connection.scalars(
                 select(recipes.c.video_id)
                 .distinct()
                 .join(videos, videos.c.id == recipes.c.video_id)
                 .where(recipes.c.details_by.is_(None), videos.c.removed_at.is_(None))
                 .order_by(recipes.c.video_id)
             )
-            if video_id not in unfetched
-        ]
+        )
         texts = _video_texts(connection, video_ids)
         result = []
         for video_id in video_ids:
@@ -490,19 +459,6 @@ def videos_to_fill(engine: Engine) -> list[VideoToFill]:
                 )
             )
     return result
-
-
-@dataclass(frozen=True)
-class Details:
-    """What looking for a recipe's written recipe found. All but `by` are None when
-    nothing was found."""
-
-    by: str  # who looked: "code" or "ai"
-    source: str | None = None  # "link", "description" or "comment"
-    source_url: str | None = None  # the page, when it's from a link
-    ingredients: list[str] | None = None  # None for a page that's a place to look
-    method: list[str] | None = None
-    confidence: int | None = None  # 0-100, when AI decided
 
 
 def save_details(engine: Engine, found: dict[int, Details]) -> None:
