@@ -115,7 +115,6 @@ class FakeWeb:
     ) -> None:
         self.pages = pages or {}
         self.requests: list[httpx2.Request] = []
-        self.sleeps: list[float] = []  # how long the fetcher waited, each time
 
     def _handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
@@ -123,9 +122,8 @@ class FakeWeb:
         return page.pop(0) if isinstance(page, list) else page
 
     def fetcher(self) -> PageFetcher:
-        """A PageFetcher that fetches from this fake, recording waits instead of
-        waiting."""
-        return PageFetcher(httpx2.MockTransport(self._handle), sleep=self.sleeps.append)
+        """A PageFetcher that fetches from this fake."""
+        return PageFetcher(httpx2.MockTransport(self._handle))
 
     def fetch(self, url: str) -> Page:
         return self.fetch_all([url])[0]

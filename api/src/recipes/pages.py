@@ -1,8 +1,6 @@
 """Fetch the web pages that videos link to, politely, and read their recipes."""
 
 import ipaddress
-import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Self
 
@@ -16,8 +14,6 @@ USER_AGENT = "recipe-library/0.1 (a personal recipe index)"
 TIMEOUT_SECONDS = 20
 MAX_BYTES = 5_000_000  # recipe pages are well under this
 MAX_REDIRECTS = 10
-RETRY_PAUSE_SECONDS = 10  # before the one retry after a 429 or 503
-_RETRY_STATUSES = (429, 503)  # too many requests, or busy: worth one more try
 
 # How fetching a link went. An HTTP error is stored as `HTTP <status>`.
 RECIPE = "recipe"
@@ -41,23 +37,14 @@ class Page:
 
 
 class PageFetcher:
-    """Fetches one page at a time.
+    """Fetches one page at a time."""
 
-    `sleep` is for tests, which pass a fake to avoid waiting before a retry.
-    """
-
-    def __init__(
-        self,
-        transport: httpx2.BaseTransport | None = None,
-        *,
-        sleep: Callable[[float], None] = time.sleep,
-    ) -> None:
+    def __init__(self, transport: httpx2.BaseTransport | None = None) -> None:
         self._client = httpx2.Client(
             transport=transport,
             headers={"User-Agent": USER_AGENT},
             timeout=TIMEOUT_SECONDS,
         )
-        self._sleep = sleep
 
     def __enter__(self) -> Self:
         return self
@@ -71,7 +58,6 @@ class PageFetcher:
             request = self._client.build_request("GET", url)
         except httpx2.InvalidURL:
             return Page(url, None, ERROR, None)
-        retried = False
         for _ in range(MAX_REDIRECTS + 1):
             # Checked at every step, so a short link to a skipped site isn't fetched
             # past the redirect.
@@ -86,10 +72,6 @@ class PageFetcher:
             try:
                 if response.next_request is not None:  # a redirect
                     request = response.next_request
-                    continue
-                if response.status_code in _RETRY_STATUSES and not retried:
-                    retried = True
-                    self._sleep(RETRY_PAUSE_SECONDS)
                     continue
                 return self._read(url, response)
             finally:
