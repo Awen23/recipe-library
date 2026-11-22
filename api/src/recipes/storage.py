@@ -244,9 +244,10 @@ def save_playlist(
     return SaveSummary(added=len(new), removed=removed)
 
 
-def videos_without_recipes(engine: Engine) -> list[tuple[str, VideoText]]:
-    """Each video in the playlist that has no recipes yet, by ID, with what Claude is
-    shown about it."""
+def videos_to_build(engine: Engine) -> list[tuple[str, VideoText]]:
+    """The videos fetched since the last build, by ID, with what Claude is shown
+    about each. They're the ones with no recipes, since building gives every video
+    at least one."""
     with engine.connect() as connection:
         rows = connection.execute(
             select(videos.c.id, videos.c.title, videos.c.description)

@@ -134,7 +134,7 @@ An outline only. Each PR is planned in detail before it starts, and its architec
 - *Plain code only.*
 
 **2. Recipes** *(done)*
-- `recipes build` splits each video that has no recipes yet into recipes, asking Claude once per video. Recipes already stored are never changed.
+- `recipes build` splits each video fetched since the last build into recipes (every video gets at least one), asking Claude once per video. Recipes already stored are never changed.
 - **AI** (Claude Haiku 5.5, one structured answer per video): lists the recipes the video teaches, in order, with each one's name and the chapter it starts in. This covers telling recipe chapters from step chapters or padding (such as "make the toppings" or "errands interlude"), chapters that hold several recipes, multi-recipe videos with no timestamps, and naming dishes from clickbait titles using the description and the creator's comments.
 - **Plain code:** a recipe starts where its chapter starts. When a chapter holds several recipes, only the first gets the start. A video where Claude finds no recipe is one recipe named after the video, so every video can be found. Without an answer (Claude declined), each chapter is a recipe named after the chapter.
 - *Model:* Haiku 5.5, Sonnet 5.5 and Opus 5.5 were compared on 30 labelled videos, picked by type. Haiku matched as many recipe counts as Opus, so the cheapest model is used.

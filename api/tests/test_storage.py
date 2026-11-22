@@ -21,7 +21,7 @@ from recipes.storage import (
     save_playlist,
     save_recipes,
     videos,
-    videos_without_recipes,
+    videos_to_build,
 )
 from recipes.youtube import YouTubeClient
 
@@ -218,15 +218,15 @@ def saved(engine: Engine, playlist: Playlist) -> Engine:
 
 
 def save_meal_prep_recipes(engine: Engine) -> None:
-    [video] = [v for id_, v in videos_without_recipes(engine) if id_ == MEAL_PREP_ID]
+    [video] = [v for id_, v in videos_to_build(engine) if id_ == MEAL_PREP_ID]
     found = split_video(video.title, video.chapters, recorded_answer(MEAL_PREP_ID))
     save_recipes(engine, MEAL_PREP_ID, found)
 
 
-def test_videos_without_recipes_have_their_chapters_and_creator_comments(
+def test_videos_to_build_have_their_chapters_and_creator_comments(
     saved: Engine,
 ) -> None:
-    to_build = dict(videos_without_recipes(saved))
+    to_build = dict(videos_to_build(saved))
 
     assert len(to_build) == 5
     assert [c.title for c in to_build[MEAL_PREP_ID].chapters][:2] == [
@@ -254,8 +254,8 @@ def test_save_recipes_stores_each_recipe(saved: Engine) -> None:
 def test_a_video_with_recipes_isnt_built_again(saved: Engine) -> None:
     save_meal_prep_recipes(saved)
 
-    assert MEAL_PREP_ID not in dict(videos_without_recipes(saved))
-    assert len(videos_without_recipes(saved)) == 4
+    assert MEAL_PREP_ID not in dict(videos_to_build(saved))
+    assert len(videos_to_build(saved)) == 4
 
 
 def test_a_removed_video_isnt_built(saved: Engine, playlist: Playlist) -> None:
@@ -263,4 +263,4 @@ def test_a_removed_video_isnt_built(saved: Engine, playlist: Playlist) -> None:
     rest = tuple(v for v in playlist.videos if v.id != MEAL_PREP_ID)
     save_playlist(replace(playlist, videos=rest), saved, now=SECOND_FETCH)
 
-    assert MEAL_PREP_ID not in dict(videos_without_recipes(saved))
+    assert MEAL_PREP_ID not in dict(videos_to_build(saved))

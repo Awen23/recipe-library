@@ -1,6 +1,7 @@
 """Work out the recipes in fetched videos: ask Claude, split, store.
 
-Only videos without recipes are built, so recipes already in use are never changed.
+Only videos fetched since the last build are built, so recipes already in use are
+never changed.
 """
 
 from dataclasses import dataclass, field
@@ -24,14 +25,14 @@ class BuildSummary:
 
 
 def build_recipes(engine: Engine, claude: Claude) -> BuildSummary:
-    """Split each video that has no recipes yet into recipes, and store them.
+    """Split each video fetched since the last build into recipes, and store them.
 
     Each video's recipes are stored as soon as Claude answers, so a build that stops
-    part way keeps what it did. A video Claude can't answer about is left without
-    recipes, for the next build to try again. A rejected API key stops the build.
+    part way keeps what it did. A video Claude can't answer about is left for the next
+    build to try again. A rejected API key stops the build.
     """
     summary = BuildSummary()
-    for video_id, video in storage.videos_without_recipes(engine):
+    for video_id, video in storage.videos_to_build(engine):
         try:
             reply = claude.find_recipes(video)
         except AIKeyError:
