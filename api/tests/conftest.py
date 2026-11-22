@@ -9,11 +9,13 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import Engine
 
+from recipes.ai import Claude
+from recipes.building import build_recipes
 from recipes.playlist import fetch_playlist
 from recipes.storage import PYPROJECT, create_engine, save_playlist
 from recipes.youtube import YouTubeClient
 
-from fakes import FakeWeb, FakeYouTubeApi, read_fixture, recipe_web
+from fakes import FakeClaudeApi, FakeWeb, FakeYouTubeApi, read_fixture, recipe_web
 
 
 @pytest.fixture(autouse=True)
@@ -67,3 +69,12 @@ def fetched(engine: Engine, fake_api: FakeYouTubeApi) -> Engine:
     )
     save_playlist(replace(playlist, videos=full), engine)
     return engine
+
+
+@pytest.fixture
+def split(fetched: Engine) -> Engine:
+    """The five fixture videos split into their 14 recipes, from Claude's real
+    answers, without their details."""
+    with Claude("test-key", transport=FakeClaudeApi().transport) as claude:
+        build_recipes(fetched, claude)
+    return fetched

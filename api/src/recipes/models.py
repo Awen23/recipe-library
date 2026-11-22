@@ -1,12 +1,30 @@
-"""The types the app passes between its parts while working out recipes. They hold
-no database or web code: `storage` fills them from the database, and `details` and
-`building` work with them.
+"""The types the app passes between its parts. They hold no database or web code:
+`storage` fills them from the database, and `details` and `building` work with them
+to work out recipes.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
+from typing import Literal
 
 from recipes.ai import VideoText
 from recipes.recipe_data import PageRecipe
+
+# How interested I am in a recipe before I've cooked it. "Not for me" hides it from
+# the library.
+Interest = Literal["want_to_cook", "curious", "not_for_me"]
+
+# What I thought after cooking a recipe: how often I'd make it again.
+Verdict = Literal["regularly", "once_in_a_while", "special_occasion", "not_again"]
+
+
+@dataclass(frozen=True)
+class Ratings:
+    """A recipe's ratings, as I set them by hand. `updated_at` is UTC."""
+
+    interest: Interest | None
+    verdict: Verdict | None
+    updated_at: datetime
 
 
 @dataclass(frozen=True)

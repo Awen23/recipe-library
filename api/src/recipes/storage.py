@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import sqlalchemy
 from alembic.config import Config
@@ -36,11 +36,21 @@ from sqlalchemy import (
     select,
     update,
 )
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from recipes.ai import VideoText
 from recipes.chapters import Chapter, parse_chapters
 from recipes.links import Link, find_links
-from recipes.models import Details, Line, RecipeName, StoredPage, VideoToFill
+from recipes.models import (
+    Details,
+    Interest,
+    Line,
+    Ratings,
+    RecipeName,
+    StoredPage,
+    Verdict,
+    VideoToFill,
+)
 from recipes.pages import Page
 from recipes.playlist import Playlist
 from recipes.recipe_data import PageRecipe
@@ -196,6 +206,27 @@ recipes = Table(
     _set_by("details_by"),
     _one_of("source", SOURCES),
     sqlite_autoincrement=True,  # what keeps `id`s from being reused
+)
+
+# The levels of each rating, from the types in `models`.
+INTERESTS = get_args(Interest)
+VERDICTS = get_args(Verdict)
+
+# My own ratings on recipes, set by hand: one row per recipe I've rated. Building
+# never reads or writes this table, so the ratings survive it. A recipe with no row
+# has no ratings, and is shown.
+recipe_ratings = Table(
+    "recipe_ratings",
+    metadata,
+    Column("recipe_id", Integer, ForeignKey("recipes.id"), primary_key=True),
+    # Before cooking it: one of INTERESTS, or null if I haven't decided.
+    # "not_for_me" hides the recipe.
+    Column("interest", String, nullable=True),
+    # After cooking it: one of VERDICTS, or null if I haven't cooked it.
+    Column("verdict", String, nullable=True),
+    Column("updated_at", DateTime, nullable=False),
+    _one_of("interest", INTERESTS),
+    _one_of("verdict", VERDICTS),
 )
 
 
@@ -483,6 +514,64 @@ def save_details(engine: Engine, found: dict[int, Details]) -> None:
                     details_confidence=details.confidence,
                 )
             )
+
+
+class NoSuchRecipeError(LookupError):
+    """There's no recipe with this ID."""
+
+
+def set_interest(
+    engine: Engine,
+    recipe_id: int,
+    interest: Interest | None,
+    *,
+    now: datetime | None = None,
+) -> Ratings:
+    """Set how interested I am in a recipe, or clear it with None. Returns its
+    ratings."""
+    return _rate(engine, recipe_id, {"interest": interest}, now or _utc_now())
+
+
+def set_verdict(
+    engine: Engine,
+    recipe_id: int,
+    verdict: Verdict | None,
+    *,
+    now: datetime | None = None,
+) -> Ratings:
+    """Set what I thought of a recipe after cooking it, or clear it with None.
+    Returns its ratings."""
+    return _rate(engine, recipe_id, {"verdict": verdict}, now or _utc_now())
+
+
+def _rate(
+    engine: Engine, recipe_id: int, changes: dict[str, Any], now: datetime
+) -> Ratings:
+    """Change some of a recipe's ratings and leave the rest, adding its row if it has
+    none yet: one "upsert", which SQLite and Postgres both write as
+    `INSERT ... ON CONFLICT DO UPDATE`. Moving to Postgres swaps `sqlite_insert` for
+    the same function from `sqlalchemy.dialects.postgresql`. See
+    https://docs.sqlalchemy.org/en/21/dialects/sqlite.html#insert-on-conflict-upsert
+    """
+    with engine.begin() as connection:
+        found = connection.scalar(select(recipes.c.id).where(recipes.c.id == recipe_id))
+        if found is None:
+            raise NoSuchRecipeError(recipe_id)
+        new_row = {"recipe_id": recipe_id, "interest": None, "verdict": None}
+        statement = sqlite_insert(recipe_ratings).values(
+            {**new_row, **changes, "updated_at": now}
+        )
+        row = connection.execute(
+            statement.on_conflict_do_update(
+                index_elements=[recipe_ratings.c.recipe_id],
+                set_={**changes, "updated_at": now},
+            ).returning(
+                recipe_ratings.c.interest,
+                recipe_ratings.c.verdict,
+                recipe_ratings.c.updated_at,
+            )
+        ).one()
+    return Ratings(row.interest, row.verdict, row.updated_at)
 
 
 def _lines(lines: Sequence[Line] | None) -> list[dict[str, Any]] | None:
