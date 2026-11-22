@@ -9,7 +9,8 @@ description = "A searchable library of the recipes in a YouTube cooking playlist
 requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20",
-    "httpx>=0.28",
+    "anthropic>=2.12,<3",
+    "httpx2>=2.16",
     "python-dotenv>=1.2",
     "sqlalchemy>=2.1",
 ]

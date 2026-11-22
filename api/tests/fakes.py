@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-import httpx
+import httpx2
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -26,10 +26,10 @@ class FakeYouTubeApi:
     """
 
     def __init__(self) -> None:
-        self.requests: list[httpx.Request] = []
-        self.transport = httpx.MockTransport(self._handle)
+        self.requests: list[httpx2.Request] = []
+        self.transport = httpx2.MockTransport(self._handle)
 
-    def _handle(self, request: httpx.Request) -> httpx.Response:
+    def _handle(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         endpoint = request.url.path.rsplit("/", 1)[-1]
         if endpoint == "playlistItems":
@@ -37,14 +37,14 @@ class FakeYouTubeApi:
                 page = read_fixture("playlist_items_page_2.json")
             else:
                 page = read_fixture("playlist_items_page_1.json")
-            return httpx.Response(200, json=page)
+            return httpx2.Response(200, json=page)
         if endpoint == "videos":
             requested = request.url.params["id"].split(",")
             response = read_fixture("videos.json")
             response["items"] = [i for i in response["items"] if i["id"] in requested]
-            return httpx.Response(200, json=response)
+            return httpx2.Response(200, json=response)
         if endpoint == "commentThreads":
             if request.url.params["videoId"] == "eG0tXlljTtI":
-                return httpx.Response(200, json=read_fixture("comment_threads.json"))
-            return httpx.Response(200, json={"items": []})
-        return httpx.Response(404)
+                return httpx2.Response(200, json=read_fixture("comment_threads.json"))
+            return httpx2.Response(200, json={"items": []})
+        return httpx2.Response(404)
