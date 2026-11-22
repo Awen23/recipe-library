@@ -10,7 +10,19 @@ from pathlib import Path
 from typing import Any
 
 import sqlalchemy
-from sqlalchemy import Engine, MetaData, event
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Engine,
+    ForeignKey,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    event,
+)
 
 from recipes.chapters import parse_chapters
 from recipes.playlist import Playlist
@@ -30,6 +42,60 @@ metadata = MetaData(
         "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
         "pk": "pk_%(table_name)s",
     }
+)
+
+# The tables below hold what the YouTube API returned, kept as it arrived, so recipes
+# can be worked out from it again without fetching. IDs are YouTube's own. Times are
+# UTC. Columns are NOT NULL unless they say otherwise.
+
+channels = Table(
+    "channels",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("title", String, nullable=False),  # updated on each fetch
+)
+
+videos = Table(
+    "videos",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column(
+        "channel_id",
+        String,
+        ForeignKey("channels.id"),
+        nullable=False,
+        index=True,  # for grouping by channel; SQLite doesn't index foreign keys
+    ),
+    Column("title", String, nullable=False),
+    Column("description", Text, nullable=False),
+    Column("duration_seconds", Integer, nullable=False),
+    Column("published_at", DateTime, nullable=False),
+    Column("thumbnail_url", String, nullable=False),
+    Column("embeddable", Boolean, nullable=False),
+    Column("first_seen_at", DateTime, nullable=False),
+    # Set when a fetch no longer finds the video, instead of deleting it, so its
+    # recipes and their ratings are kept.
+    Column("removed_at", DateTime, nullable=True),
+)
+
+# Parsed from the description again on every fetch.
+chapters = Table(
+    "chapters",
+    metadata,
+    Column("video_id", String, ForeignKey("videos.id"), primary_key=True),
+    Column("position", Integer, primary_key=True),  # 0, 1, 2… in description order
+    Column("start_seconds", Integer, nullable=False),
+    Column("title", String, nullable=False),
+)
+
+# Only the comments posted by the video's own channel.
+creator_comments = Table(
+    "creator_comments",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("video_id", String, ForeignKey("videos.id"), nullable=False, index=True),
+    Column("text", Text, nullable=False),
+    Column("published_at", DateTime, nullable=False),
 )
 
 
