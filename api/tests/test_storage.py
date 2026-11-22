@@ -287,11 +287,16 @@ def test_saving_recipes_keeps_fields_set_by_hand(saved: Engine) -> None:
             .values(name="Three breakfasts", name_by="hand")
         )
 
-    save_whr7_recipes(saved)
+    [(_, video)] = [v for v in videos_to_split(saved) if v[0] == "whr7iOKRXTA"]
+    found = split_video(video.title, video.chapters, recorded_answer("whr7iOKRXTA"))
+    # The next answer puts the first recipe at the start of the video.
+    found[0] = replace(found[0], name="Overnight oats 2", start_seconds=0)
+
+    save_recipes(saved, "whr7iOKRXTA", found)
 
     first, second = whr7_recipes(saved)[:2]
     assert (first["name"], first["name_by"]) == ("Three breakfasts", "hand")
-    assert first["start_seconds"] == 102  # not set by hand, so still updated
+    assert first["start_seconds"] == 0  # not set by hand, so updated
     assert second["name"] == "Mexican inspired salad"
 
 
@@ -322,3 +327,15 @@ def test_the_recipes_of_a_removed_video_are_marked_as_removed(
     assert remove_recipes_of_removed_videos(saved) == 5
     assert {r["removed_at"] for r in whr7_recipes(saved)} == {SECOND_FETCH}
     assert remove_recipes_of_removed_videos(saved) == 0  # already marked
+
+
+def test_a_removed_recipe_found_again_is_no_longer_removed(saved: Engine) -> None:
+    """Not from the data: Claude's answer is cut down, then whole again."""
+    save_whr7_recipes(saved)
+    [(_, video)] = [v for v in videos_to_split(saved) if v[0] == "whr7iOKRXTA"]
+    found = split_video(video.title, video.chapters, recorded_answer("whr7iOKRXTA"))
+    save_recipes(saved, "whr7iOKRXTA", found[:2], now=SECOND_FETCH)
+
+    save_whr7_recipes(saved)
+
+    assert [r["removed_at"] for r in whr7_recipes(saved)] == [None] * 5

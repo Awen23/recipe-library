@@ -1,6 +1,7 @@
 from functools import partial
 from pathlib import Path
 
+import httpx2
 import pytest
 from sqlalchemy import Engine, func, select
 
@@ -129,3 +130,26 @@ def test_build_without_an_api_key_says_how_to_set_one(
 
     assert cli.main(["build"]) == 1
     assert "ANTHROPIC_API_KEY is not set" in capsys.readouterr().err
+
+
+def test_a_video_claude_couldnt_answer_about_is_left_for_the_next_build(
+    monkeypatch: pytest.MonkeyPatch,
+    fetched: Engine,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Not from the data: the error follows the shape in Anthropic's error docs."""
+    fake_claude = FakeClaudeApi()
+    error = {
+        "type": "error",
+        "error": {"type": "invalid_request_error", "message": "x"},
+    }
+    fake_claude.queue.append(httpx2.Response(400, json=error))  # the first video
+    monkeypatch.setattr(cli, "Claude", partial(Claude, transport=fake_claude.transport))
+
+    assert cli.main(["build"]) == 1
+
+    output = capsys.readouterr()
+    # H0tkAEL6CS8 is asked about first, and its one recipe is missing.
+    assert "Built 13 recipes from 4 videos" in output.out
+    assert "1 videos have no answer from Claude yet" in output.err
+    assert cli.main(["build"]) == 0  # the next build asks again

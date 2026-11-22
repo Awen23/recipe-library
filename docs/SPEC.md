@@ -103,7 +103,7 @@ Each video also keeps its **thumbnail**, its **channel**, and whether it can be 
 
 ### How the data is kept
 - **Fetched data and recipes are kept apart.** Videos, comments and fetched recipe pages are stored as they arrived. Recipes are worked out from them, so they can be rebuilt while developing without fetching again.
-- **Fetching again only adds new videos.** Stored videos are left as they are. A video that leaves the playlist is marked as removed, not deleted, and so are its recipes.
+- **Fetching again only adds new videos.** Stored videos are left as they are. A video that leaves the playlist is marked as removed, not deleted, and so are its recipes at the next build.
 - **Each recipe gets an ID when it's created, and keeps it,** so Phase 3's ratings stay attached.
 - **Each field records who set it:** plain code, AI (with how sure it was), or a correction I made by hand. Hand corrections always win, so a re-run never overwrites them.
 - **The tables are designed up front, and each PR creates the ones it fills,** with an Alembic migration. All database access goes through `storage.py`.
@@ -120,7 +120,7 @@ Worked out, created in later PRs:
   - `id` (never reused), `video_id` and `position` within the video (unique together), and `chapter_position`, the chapter it starts in
   - `name`, with `name_by` and `name_confidence`
   - `start_seconds`, with `start_by`
-  - `removed_at`, set when a rebuild finds fewer recipes in the video
+  - `removed_at`, set when a rebuild finds fewer recipes in the video, or the video has left the playlist
   - Each `_by` is `code`, `ai` or `hand`. Code and AI skip any group whose `_by` is `hand`.
   - PR 3 adds the details: `ingredients` (a JSON list), `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four.
 - **`ai_responses`** (PR 2): Claude's answer for each video, keyed by the video, prompt version, model and effort, so a rebuild only asks again when one of those changes.
@@ -135,7 +135,7 @@ An outline only. Each PR is planned in detail before it starts, and its architec
 - *Plain code only.*
 
 **2. Recipes** *(done)*
-- `recipes build` splits every video in the playlist into recipes. It asks Claude once per video, keeps each answer in `ai_responses`, and asks again only when the prompt, model or effort changes. Rebuilding keeps each recipe's ID and anything set by hand.
+- `recipes build` splits every video in the playlist into recipes. It asks Claude once per video, keeps each answer in `ai_responses`, and asks again only when the prompt, model or effort changes. Rebuilding keeps each recipe's ID and anything set by hand. Recipes are matched by their position in the video, so a new prompt or model that adds or drops a recipe shifts the ones after it.
 - **AI** (Claude Haiku 5.5, one structured answer per video): lists the recipes the video teaches, in order, with each one's name and the chapter it starts in. This covers telling recipe chapters from step chapters or padding (such as "make the toppings" or "errands interlude"), chapters that hold several recipes, multi-recipe videos with no timestamps, and naming dishes from clickbait titles using the description and the creator's comments.
 - **Plain code:** a recipe starts where its chapter starts. When a chapter holds several recipes, only the first gets the start. A video where Claude finds no recipe is one recipe named after the video, so every video can be found. Without an answer (Claude declined), each chapter is a recipe named after the chapter.
 - *Model:* Haiku 5.5, Sonnet 5.5 and Opus 5.5 were compared on 30 labelled videos, picked by type. Haiku matched as many recipe counts as Opus, so the cheapest model is used.

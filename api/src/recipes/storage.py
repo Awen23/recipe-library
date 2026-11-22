@@ -1,4 +1,5 @@
-"""Where fetched playlists are kept. All database access goes through this module.
+"""Where fetched videos, Claude's answers and recipes are kept. All database access
+goes through this module.
 
 The database is SQLite, at `data/recipes.db` unless `DATABASE_URL` says otherwise.
 Its tables are created by the migrations in `migrations/`: run `alembic upgrade head`.
@@ -142,8 +143,8 @@ recipes = Table(
     # Where the recipe starts in the video. Null when it isn't known.
     Column("start_seconds", Integer, nullable=True),
     Column("start_by", String, nullable=False),
-    # Set when a rebuild finds fewer recipes in the video, instead of deleting the
-    # row, so anything set by hand on it is kept.
+    # Set when a rebuild finds fewer recipes in the video, or the video has left the
+    # playlist, instead of deleting the row, so anything set by hand on it is kept.
     Column("removed_at", DateTime, nullable=True),
     UniqueConstraint("video_id", "position"),
     ForeignKeyConstraint(
@@ -306,8 +307,8 @@ def _current_answers() -> sqlalchemy.ColumnElement[bool]:
 
 
 def stored_answers(engine: Engine) -> dict[str, VideoAnswer | None]:
-    """Claude's stored answers for the prompt and model in use, by video ID. A video
-    Claude declined to answer about maps to None; one not asked yet is missing."""
+    """Claude's stored answers for the prompt, model and effort in use, by video ID.
+    A video Claude declined to answer about maps to None; one not asked is missing."""
     with engine.connect() as connection:
         rows = connection.execute(
             select(ai_responses.c.video_id, ai_responses.c.answer).where(
@@ -325,7 +326,7 @@ def stored_answers(engine: Engine) -> dict[str, VideoAnswer | None]:
 def save_answer(
     engine: Engine, video_id: str, reply: Reply, *, now: datetime | None = None
 ) -> None:
-    """Store Claude's reply about a video, for the prompt and model in use."""
+    """Store Claude's reply about a video, for the prompt, model and effort in use."""
     with engine.begin() as connection:
         connection.execute(
             insert(ai_responses).values(
@@ -333,7 +334,7 @@ def save_answer(
                 prompt_version=ai.PROMPT_VERSION,
                 model=ai.MODEL,
                 effort=ai.EFFORT,
-                answer=reply.answer.model_dump() if reply.answer else None,
+                answer=None if reply.answer is None else reply.answer.model_dump(),
                 stop_reason=reply.stop_reason,
                 input_tokens=reply.input_tokens,
                 output_tokens=reply.output_tokens,
@@ -362,6 +363,11 @@ def save_recipes(
     A stored recipe keeps its ID, and any group of fields set by hand. Stored
     recipes past the last one found are marked as removed, not deleted, so their
     hand-set fields are kept. It all happens in one transaction.
+
+    Position is the only match, so this relies on Claude listing the same recipes in
+    the same order on each build, which it does while the prompt and model stay the
+    same. After a change to either, a recipe Claude adds or drops shifts the ones
+    after it onto other rows.
     """
     now = now or _utc_now()
     with engine.begin() as connection:

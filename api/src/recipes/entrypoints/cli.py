@@ -8,7 +8,7 @@ from dotenv import dotenv_values, find_dotenv
 from sqlalchemy import Engine
 
 from recipes import storage
-from recipes.ai import AIError, Claude
+from recipes.ai import AIError, AIKeyError, Claude, VideoAnswer, VideoText
 from recipes.playlist import fetch_playlist
 from recipes.splitting import split_video
 from recipes.youtube import YouTubeClient, YouTubeError
@@ -70,26 +70,15 @@ def _build(_args: argparse.Namespace) -> int:
     answers = storage.stored_answers(engine)
     to_ask = [(id_, video) for id_, video in videos if id_ not in answers]
 
-    # Each answer is stored as it arrives, so a build that stops part way doesn't
-    # pay for the same answers again.
-    failed = input_tokens = output_tokens = 0
+    asked = input_tokens = output_tokens = 0
     if to_ask:
         api_key = _secret("ANTHROPIC_API_KEY")
-        if not api_key:
-            return 1
-        print(f"Asking Claude about {len(to_ask)} videos…")
-        with Claude(api_key) as claude:
-            for video_id, video in to_ask:
-                try:
-                    reply = claude.find_recipes(video)
-                except AIError as error:
-                    print(f"warning: {video_id}: {error}", file=sys.stderr)
-                    failed += 1
-                    continue
-                storage.save_answer(engine, video_id, reply)
-                answers[video_id] = reply.answer
-                input_tokens += reply.input_tokens
-                output_tokens += reply.output_tokens
+        if api_key:
+            print(f"Asking Claude about {len(to_ask)} videos…")
+            asked, input_tokens, output_tokens = _ask_claude(
+                engine, api_key, to_ask, answers
+            )
+    failed = len(to_ask) - asked
 
     added = removed = total = 0
     for video_id, video in videos:
@@ -105,17 +94,48 @@ def _build(_args: argparse.Namespace) -> int:
     print(
         f"Built {total} recipes from {len(videos) - failed} videos "
         f"({added} new, {removed} marked as removed). "
-        f"Asked Claude about {len(to_ask) - failed} videos "
+        f"Asked Claude about {asked} videos "
         f"({input_tokens} input and {output_tokens} output tokens)."
     )
     if failed:
         print(
-            f"error: Claude couldn't answer about {failed} videos. "
+            f"error: {failed} videos have no answer from Claude yet. "
             "Run `recipes build` again to retry them.",
             file=sys.stderr,
         )
         return 1
     return 0
+
+
+def _ask_claude(
+    engine: Engine,
+    api_key: str,
+    to_ask: list[tuple[str, VideoText]],
+    answers: dict[str, VideoAnswer | None],
+) -> tuple[int, int, int]:
+    """Ask Claude about each video, adding the answers to `answers`. Returns how
+    many were answered, and the input and output tokens used.
+
+    Each answer is stored as it arrives, so a build that stops part way doesn't
+    pay for the same answers again.
+    """
+    asked = input_tokens = output_tokens = 0
+    with Claude(api_key) as claude:
+        for video_id, video in to_ask:
+            try:
+                reply = claude.find_recipes(video)
+            except AIKeyError as error:
+                print(f"error: {error}", file=sys.stderr)
+                break  # every later request would be rejected too
+            except AIError as error:
+                print(f"warning: {video_id}: {error}", file=sys.stderr)
+                continue
+            storage.save_answer(engine, video_id, reply)
+            answers[video_id] = reply.answer
+            asked += 1
+            input_tokens += reply.input_tokens
+            output_tokens += reply.output_tokens
+    return asked, input_tokens, output_tokens
 
 
 def _secret(name: str) -> str | None:

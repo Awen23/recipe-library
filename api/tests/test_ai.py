@@ -3,7 +3,7 @@ import json
 import httpx2
 import pytest
 
-from recipes.ai import MODEL, SYSTEM_PROMPT, AIError, Claude, VideoText
+from recipes.ai import MODEL, SYSTEM_PROMPT, AIError, AIKeyError, Claude, VideoText
 from recipes.chapters import parse_chapters
 
 from fakes import FakeClaudeApi, read_fixture
@@ -77,7 +77,10 @@ def test_chapters_the_video_doesnt_have_are_dropped(
 def test_a_refusal_leaves_no_answer(fake_claude: FakeClaudeApi) -> None:
     """Not from the data: no video has been refused, so this reply is made up."""
     refusal = {**read_fixture("claude_replies.json")["whr7iOKRXTA"]}
-    refusal |= {"content": [], "stop_reason": "refusal"}
+    refusal |= {
+        "content": [{"type": "text", "text": "I can't help with that."}],
+        "stop_reason": "refusal",
+    }
     fake_claude.queue.append(httpx2.Response(200, json=refusal))
 
     reply = find_recipes(fake_claude, whr7())
@@ -99,6 +102,8 @@ def test_a_cut_off_answer_is_asked_for_again_with_more_room(
     assert reply.answer is not None
     first, second = (json.loads(r.content) for r in fake_claude.requests)
     assert second["max_tokens"] == first["max_tokens"] * 2
+    # Both requests are paid for, so both are counted.
+    assert (reply.input_tokens, reply.output_tokens) == (3310 * 2, 206 * 2)
 
 
 def test_an_api_error_raises_an_ai_error(fake_claude: FakeClaudeApi) -> None:
@@ -110,4 +115,16 @@ def test_an_api_error_raises_an_ai_error(fake_claude: FakeClaudeApi) -> None:
     fake_claude.queue.append(httpx2.Response(400, json=error))
 
     with pytest.raises(AIError):
+        find_recipes(fake_claude, whr7())
+
+
+def test_a_rejected_api_key_raises_an_ai_key_error(fake_claude: FakeClaudeApi) -> None:
+    """Not from the data: the error follows the shape in Anthropic's error docs."""
+    error = {
+        "type": "error",
+        "error": {"type": "authentication_error", "message": "invalid x-api-key"},
+    }
+    fake_claude.queue.append(httpx2.Response(401, json=error))
+
+    with pytest.raises(AIKeyError):
         find_recipes(fake_claude, whr7())

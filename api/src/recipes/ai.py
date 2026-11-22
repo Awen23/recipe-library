@@ -7,12 +7,13 @@ from typing import Final, Self
 import anthropic
 import httpx2
 import pydantic
+from anthropic.types import JSONOutputFormatParam
 from pydantic import BaseModel
 
 from recipes.chapters import Chapter
 
 MODEL = "claude-haiku-5-5"
-EFFORT: Final = "medium"
+EFFORT: Final = "medium"  # `Final` keeps its type `Literal["medium"]`, as the SDK wants
 # Bump this by hand whenever SYSTEM_PROMPT or the answer's shape changes, so the
 # next build asks again instead of reusing answers to the old prompt.
 PROMPT_VERSION = 1
@@ -80,6 +81,17 @@ class AIError(Exception):
     """The Claude API returned an error, or no usable answer."""
 
 
+class AIKeyError(AIError):
+    """The API key was rejected, so no later request will work either."""
+
+
+# The JSON schema the answer must follow, in the form the API expects.
+ANSWER_FORMAT: JSONOutputFormatParam = {
+    "type": "json_schema",
+    "schema": anthropic.transform_schema(VideoAnswer),
+}
+
+
 class Claude:
     """Calls the Claude API with an API key. Use it in a `with` block."""
 
@@ -96,40 +108,47 @@ class Claude:
         self._client.close()
 
     def find_recipes(self, video: VideoText) -> Reply:
-        """Ask which recipes `video` teaches. An answer that was cut off, or isn't in
-        the expected shape, is asked for again once, with twice the room."""
-        try:
-            reply = self._ask(video, MAX_TOKENS) or self._ask(video, MAX_TOKENS * 2)
-        except anthropic.APIError as error:
-            raise AIError(str(error)) from error
-        if reply is None:
-            raise AIError("no usable answer after asking twice")
-        return reply
+        """Ask which recipes `video` teaches.
 
-    def _ask(self, video: VideoText, max_tokens: int) -> Reply | None:
-        """Ask once. None when the answer can't be used."""
-        try:
-            response = self._client.messages.parse(
-                model=MODEL,
-                max_tokens=max_tokens,
-                system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_message(video)}],
-                output_config={"effort": EFFORT},
-                output_format=VideoAnswer,
-            )
-        except pydantic.ValidationError:  # also how a cut-off answer arrives
-            return None
-        answered = response.stop_reason == "end_turn"
-        if response.stop_reason == "max_tokens" or (
-            answered and response.parsed_output is None
-        ):
-            return None
-        return Reply(
-            answer=tidy(response.parsed_output, video) if answered else None,
-            stop_reason=response.stop_reason or "",
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
+        An answer that was cut off, or isn't in the expected shape, is asked for
+        again once, with twice the room. The tokens of both requests are counted.
+        """
+        input_tokens = output_tokens = 0
+        for max_tokens in (MAX_TOKENS, MAX_TOKENS * 2):
+            try:
+                response = self._client.messages.create(
+                    model=MODEL,
+                    max_tokens=max_tokens,
+                    system=SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": user_message(video)}],
+                    output_config={"effort": EFFORT, "format": ANSWER_FORMAT},
+                )
+            except anthropic.AuthenticationError as error:
+                raise AIKeyError(str(error)) from error
+            except anthropic.APIError as error:
+                raise AIError(str(error)) from error
+            input_tokens += response.usage.input_tokens
+            output_tokens += response.usage.output_tokens
+
+            if response.stop_reason == "refusal":
+                return Reply(None, "refusal", input_tokens, output_tokens)
+            answer = _parse(response) if response.stop_reason == "end_turn" else None
+            if answer is not None:
+                return Reply(
+                    tidy(answer, video), "end_turn", input_tokens, output_tokens
+                )
+        raise AIError(
+            f"no usable answer after asking twice (stopped: {response.stop_reason})"
         )
+
+
+def _parse(response: anthropic.types.Message) -> VideoAnswer | None:
+    """The answer in a response, or None if it isn't in the expected shape."""
+    text = "".join(block.text for block in response.content if block.type == "text")
+    try:
+        return VideoAnswer.model_validate_json(text)
+    except pydantic.ValidationError:
+        return None
 
 
 def user_message(video: VideoText) -> str:
@@ -148,11 +167,9 @@ def user_message(video: VideoText) -> str:
     )
 
 
-def tidy(answer: VideoAnswer | None, video: VideoText) -> VideoAnswer | None:
+def tidy(answer: VideoAnswer, video: VideoText) -> VideoAnswer:
     """Drop what the schema can't rule out: blank names, chapters the video doesn't
     have, and confidences outside 0-100."""
-    if answer is None:
-        return None
     recipes = [
         AIRecipe(
             name=recipe.name.strip(),
