@@ -147,3 +147,16 @@ def test_one_recipe_video_without_recipe_data_takes_a_link_that_says_recipe(
     found = match_video(VideoToFill("v", ONE_RECIPE, {1}, [page]))
 
     assert found == ({1: Details(page.url, None, None, None)} if matched else {})
+
+
+def test_a_tie_goes_to_the_link_written_first() -> None:
+    # Not from the data: the same recipe linked twice, as a short link and in full.
+    recipes = [RecipeName(1, "Misir wot"), RecipeName(2, "Shiro wot")]
+    pages = [
+        StoredPage("https://a.test/", "misir wot", NO_RECIPE, None),
+        StoredPage("https://b.test/", "misir wot", NO_RECIPE, None),
+    ]
+
+    assert match_video(VideoToFill("v", recipes, {1, 2}, pages)) == {
+        1: Details("https://a.test/", None, None, 100)
+    }

@@ -55,11 +55,14 @@ def _match_by_name(video: VideoToFill) -> dict[int, Details]:
             score = max(similarity(recipe.name, name) for name in names)
             if score >= MIN_SCORE:
                 # A page with a recipe beats one that's only a place to look.
-                pairs.append((score, page.recipe is not None, recipe.id, position))
+                pairs.append((score, page.recipe is not None, position, recipe.id))
 
     found: dict[int, Details] = {}
     used: set[int] = set()
-    for score, _, recipe_id, position in sorted(pairs, reverse=True):
+    # Best score first, then a page with a recipe, then the link written first, then
+    # the recipe that comes first.
+    pairs.sort(key=lambda pair: (-pair[0], not pair[1], pair[2], pair[3]))
+    for score, _, position, recipe_id in pairs:
         if recipe_id in found or position in used:
             continue
         page = video.pages[position]
@@ -79,14 +82,18 @@ def _from_recipe(page: StoredPage, score: int | None) -> Details:
 
 def similarity(name: str, text: str) -> int:
     """How much of recipe `name` is in `text`, 0-100: the share of its words found
-    there, or how alike the two are written as one word ("Kebab pizza" and
+    there, or 100 when one is the other written as one word ("Kebab pizza" and
     "kebabpizza")."""
     name_words, text_words = _words(name), _words(text)
     if not name_words or not text_words:
         return 0
     found = sum(any(_alike(word, other) for other in text_words) for word in name_words)
-    joined = _alike("".join(name_words), "".join(text_words))
-    return 100 if joined else round(100 * found / len(name_words))
+    # Only when one side is a single word, so "Red lentil pancakes" doesn't count
+    # as all there in "Lentil pancakes".
+    one_word = len(name_words) == 1 or len(text_words) == 1
+    if one_word and _alike("".join(name_words), "".join(text_words)):
+        return 100
+    return round(100 * found / len(name_words))
 
 
 def _words(text: str) -> list[str]:
