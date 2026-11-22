@@ -1,4 +1,5 @@
-"""Where fetched playlists are kept. All database access goes through this module.
+"""Where fetched videos, Claude's answers and recipes are kept. All database access
+goes through this module.
 
 The database is SQLite, at `data/recipes.db` unless `DATABASE_URL` says otherwise.
 Its tables are created by the migrations in `migrations/`: run `alembic upgrade head`.
@@ -17,23 +18,28 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Engine,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     MetaData,
     String,
     Table,
     Text,
+    UniqueConstraint,
     event,
     insert,
     select,
     update,
 )
 
-from recipes.chapters import parse_chapters
+from recipes.ai import VideoText
+from recipes.chapters import Chapter, parse_chapters
 from recipes.playlist import Playlist
+from recipes.splitting import Recipe
 from recipes.youtube import Comment, Video
 
 DEFAULT_DATABASE_URL = "sqlite:///data/recipes.db"  # relative to the folder it runs in
@@ -105,6 +111,45 @@ creator_comments = Table(
     Column("video_id", String, ForeignKey("videos.id"), nullable=False, index=True),
     Column("text", Text, nullable=False),
     Column("published_at", DateTime, nullable=False),
+)
+
+
+# Who set a group of recipe fields: plain code, AI, or a correction by hand.
+SET_BY = ("code", "ai", "hand")
+
+
+def _set_by(column: str) -> CheckConstraint:
+    allowed = ", ".join(f"'{by}'" for by in SET_BY)
+    return CheckConstraint(f"{column} IN ({allowed})", name=column)
+
+
+# The tables below are worked out from the fetched ones, by code and by AI.
+
+# One row per recipe. A video has one or more, in the order they appear in it. Rows
+# are only ever added, so ratings and corrections stay attached. A recipe whose video
+# has left the playlist is removed along with it (`videos.removed_at`).
+recipes = Table(
+    "recipes",
+    metadata,
+    # Never reused, even after a row is deleted, so links to a recipe stay right.
+    Column("id", Integer, primary_key=True),
+    Column("video_id", String, ForeignKey("videos.id"), nullable=False),
+    Column("position", Integer, nullable=False),  # 0, 1, 2… within the video
+    # The chapter the recipe starts in, if the video has chapters.
+    Column("chapter_position", Integer, nullable=True),
+    Column("name", String, nullable=False),
+    Column("name_by", String, nullable=False),
+    Column("name_confidence", Integer, nullable=True),  # 0-100, when AI named it
+    # Where the recipe starts in the video. Null when it isn't known.
+    Column("start_seconds", Integer, nullable=True),
+    Column("start_by", String, nullable=False),
+    UniqueConstraint("video_id", "position"),
+    ForeignKeyConstraint(
+        ["video_id", "chapter_position"], ["chapters.video_id", "chapters.position"]
+    ),
+    _set_by("name_by"),
+    _set_by("start_by"),
+    sqlite_autoincrement=True,  # what keeps `id`s from being reused
 )
 
 
@@ -197,6 +242,67 @@ def save_playlist(
         )
 
     return SaveSummary(added=len(new), removed=removed)
+
+
+def videos_to_build(engine: Engine) -> list[tuple[str, VideoText]]:
+    """The videos fetched since the last build, by ID, with what Claude is shown
+    about each. They're the ones with no recipes, since building gives every video
+    at least one."""
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(videos.c.id, videos.c.title, videos.c.description)
+            .where(
+                videos.c.removed_at.is_(None),
+                videos.c.id.not_in(select(recipes.c.video_id)),
+            )
+            .order_by(videos.c.first_seen_at, videos.c.id)
+        ).all()
+        chapters_by_video: dict[str, list[Chapter]] = {}
+        for chapter in connection.execute(
+            select(chapters).order_by(chapters.c.video_id, chapters.c.position)
+        ):
+            chapters_by_video.setdefault(chapter.video_id, []).append(
+                Chapter(chapter.start_seconds, chapter.title)
+            )
+        comments_by_video: dict[str, list[str]] = {}
+        for comment in connection.execute(
+            select(creator_comments).order_by(creator_comments.c.published_at)
+        ):
+            comments_by_video.setdefault(comment.video_id, []).append(comment.text)
+    return [
+        (
+            row.id,
+            VideoText(
+                title=row.title,
+                description=row.description,
+                chapters=chapters_by_video.get(row.id, []),
+                creator_comments=comments_by_video.get(row.id, []),
+            ),
+        )
+        for row in rows
+    ]
+
+
+def save_recipes(engine: Engine, video_id: str, found: Sequence[Recipe]) -> None:
+    """Store a video's recipes, in one transaction."""
+    with engine.begin() as connection:
+        _insert(
+            connection,
+            recipes,
+            [
+                {
+                    "video_id": video_id,
+                    "position": recipe.position,
+                    "chapter_position": recipe.chapter_position,
+                    "name": recipe.name,
+                    "name_by": recipe.name_by,
+                    "name_confidence": recipe.name_confidence,
+                    "start_seconds": recipe.start_seconds,
+                    "start_by": recipe.start_by,
+                }
+                for recipe in found
+            ],
+        )
 
 
 def _insert(

@@ -20,6 +20,7 @@ I don't yet know what the data looks like, so the plan starts by finding out. On
 
 ## 3. Later
 Ideas deferred while we focus on the current phase. Added to as we discuss and defer things.
+- **Videos that aren't recipes** (a talk, a haul): they're kept as one recipe named after the video, so they can be found. The UI could hide them, and they could get a better name than the video's title.
 - **Refreshing the library from the app** (e.g. a "refresh playlist" button), instead of running a fetch command.
 - **Other people's playlists:** sign in with Google (`youtube.readonly` scope, which needs Google's app verification for a public launch). Before anyone else uses the app, move from SQLite to Postgres.
 
@@ -50,7 +51,7 @@ Only code worth keeping is merged. Exploration isn't a PR.
 
 **PR 2: Fetch and chapters** *(done, the only code kept from this phase)*
 - *Before starting:* the playlist is set to unlisted, and a YouTube Data API key exists.
-- A `recipes <playlist-id>` command (the ID isn't a secret): pages through `playlistItems.list`, then fetches details with `videos.list` in batches of 50 (title, description, duration, publish date, channel). Deleted or private videos are skipped and counted.
+- A `recipes fetch <playlist-id>` command (the ID isn't a secret): pages through `playlistItems.list`, then fetches details with `videos.list` in batches of 50 (title, description, duration, publish date, channel). Deleted or private videos are skipped and counted.
 - The results are saved as a git-ignored JSON file. No database yet.
 - A chapter parser: description text in, list of chapters (start time in seconds, title) out, handling the formats the real descriptions use.
 - Tests never call the live API. They use small fixtures in `tests/fixtures/`: trimmed copies of real API responses (a few videos, with the playlist ID replaced) and real description lines.
@@ -102,10 +103,10 @@ Every video becomes one or more **recipes**, ready for rating (Phase 3) and the 
 Each video also keeps its **thumbnail**, its **channel**, and whether it can be **embedded** in a page. Whether it's a **Short** is worked out from its length.
 
 ### How the data is kept
-- **Fetched data and recipes are kept apart.** Videos, comments and fetched recipe pages are stored as they arrived. Recipes are worked out from them, so they can be rebuilt while developing without fetching again.
-- **Fetching again only adds new videos.** Stored videos are left as they are. A video that leaves the playlist is marked as removed, not deleted, and so are its recipes.
+- **Fetched data and recipes are kept apart.** Videos, comments and fetched recipe pages are stored as they arrived. Recipes are worked out from them, so working them out never needs another fetch.
+- **Fetching and building again only add new videos and their recipes.** Stored videos and recipes are left as they are, since they're already in use. A video that leaves the playlist is marked as removed, not deleted, and its recipes go with it.
 - **Each recipe gets an ID when it's created, and keeps it,** so Phase 3's ratings stay attached.
-- **Each field records who set it:** plain code, AI (with how sure it was), or a correction I made by hand. Hand corrections always win, so a re-run never overwrites them.
+- **Each field records who set it:** plain code, AI (with how sure it was), or a correction I made by hand. Building never changes a stored recipe, so hand corrections are never overwritten.
 - **The tables are designed up front, and each PR creates the ones it fills,** with an Alembic migration. All database access goes through `storage.py`.
 
 ### Tables
@@ -117,11 +118,11 @@ Fetched, created in PR 1:
 
 Worked out, created in later PRs:
 - **`recipes`** (PR 2) holds what a recipe card shows:
-  - `id` (never reused), `video_id` and `position` within the video (unique together), and `found_by` (`chapter` or `ai`)
+  - `id` (never reused), `video_id` and `position` within the video (unique together), and `chapter_position`, the chapter it starts in
   - `name`, with `name_by` and `name_confidence`
   - `start_seconds`, with `start_by`
-  - the details: `ingredients` (a JSON list), `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four
   - Each `_by` is `code`, `ai` or `hand`. Code and AI skip any group whose `_by` is `hand`.
+  - PR 3 adds the details: `ingredients` (a JSON list), `method`, `source` and `source_url`, with one `details_by` and `details_confidence` for all four.
 - **`recipe_pages`** (PR 3): each linked page as fetched: its URL, where it redirected to, when it was fetched, what was found (such as `recipe`, `no recipe data` or `HTTP 403`), and its schema.org `Recipe` data.
 
 ### PRs
@@ -129,15 +130,14 @@ An outline only. Each PR is planned in detail before it starts, and its architec
 
 **1. Fetched data in SQLite** *(done)*
 - SQLite through SQLAlchemy Core, with tables created and changed by Alembic migrations.
-- `recipes <playlist-id>` stores new videos with their channels, chapters and creator comments, and marks videos that have left the playlist as removed.
+- `recipes fetch <playlist-id>` stores new videos with their channels, chapters and creator comments, and marks videos that have left the playlist as removed.
 - *Plain code only.*
 
-**2. Recipes**
-- **Plain code:** split videos at their chapters, give videos without chapters one recipe, and use chapter titles as names.
-- **AI:**
-  - Check every video with chapters, deciding which chapters are recipes and which are steps or padding (such as "make the toppings" or "errands interlude"). Some single-recipe videos have step chapters, and some chapters hold several recipes.
-  - Count and name the recipes in multi-recipe videos with no timestamps.
-  - Name every recipe that has no chapter title, using the video title, the description and the creator's comment.
+**2. Recipes** *(done)*
+- `recipes build` splits each video fetched since the last build into recipes (every video gets at least one), asking Claude once per video. Recipes already stored are never changed.
+- **AI** (Claude Haiku 5.5, one structured answer per video): lists the recipes the video teaches, in order, with each one's name and the chapter it starts in. This covers telling recipe chapters from step chapters or padding (such as "make the toppings" or "errands interlude"), chapters that hold several recipes, multi-recipe videos with no timestamps, and naming dishes from clickbait titles using the description and the creator's comments.
+- **Plain code:** a recipe starts where its chapter starts. When a chapter holds several recipes, only the first gets the start. A video where Claude finds no recipe is one recipe named after the video, so every video can be found. Without an answer (Claude declined), each chapter is a recipe named after the chapter.
+- *Model:* Haiku 5.5, Sonnet 5.5 and Opus 5.5 were compared on 30 labelled videos, picked by type. Haiku matched as many recipe counts as Opus, so the cheapest model is used.
 
 PRs 3 and 4 look for each recipe's details one place at a time, most common first, and stop at the first place that has its ingredients. Linked pages come first: they're the most common source, and reading them needs no AI.
 
@@ -152,6 +152,6 @@ For recipes still without details:
 *Done when:* the numbers roughly match what Phase 1 found, so anything the code misses shows up.
 - **Recipes:** about 740, and every available video has at least one.
 - **Ingredients:** found for about as many videos as Phase 1 found, from each source: about 120 from descriptions, 60 from creator comments and 120 from linked pages.
-- **Agreement:** on a random sample of 30 videos, the number of recipes matches the exploration labels in `api/data/exploration/` for at least 27.
-- **Fetching again:** keeps every recipe's ID, and leaves hand corrections untouched.
+- **Agreement:** on 30 videos picked by type (12 with chapters, 5 multi-recipe without timestamps, 13 others) and checked by hand, the number of recipes matches for at least 27.
+- **Fetching and building again:** add only new videos' recipes, and leave stored recipes untouched.
 - **AI-made fields** are marked as AI-made, and the tests pass.

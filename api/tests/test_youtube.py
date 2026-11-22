@@ -1,4 +1,4 @@
-import httpx
+import httpx2
 import pytest
 
 from recipes.youtube import (
@@ -110,22 +110,22 @@ def test_api_key_is_sent_in_a_header_not_the_url(fake_api: FakeYouTubeApi) -> No
 
 
 def test_exhausted_quota_raises_quota_error() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(403, json=read_fixture("error_quota_exceeded.json"))
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(403, json=read_fixture("error_quota_exceeded.json"))
 
     with (
-        YouTubeClient("test-key", transport=httpx.MockTransport(handler)) as client,
+        YouTubeClient("test-key", transport=httpx2.MockTransport(handler)) as client,
         pytest.raises(QuotaExceededError),
     ):
         client.playlist_video_ids("PLAYLIST_ID")
 
 
 def test_other_api_errors_include_youtubes_message() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(404, json=read_fixture("error_playlist_not_found.json"))
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(404, json=read_fixture("error_playlist_not_found.json"))
 
     with (
-        YouTubeClient("test-key", transport=httpx.MockTransport(handler)) as client,
+        YouTubeClient("test-key", transport=httpx2.MockTransport(handler)) as client,
         pytest.raises(YouTubeError, match="HTTP 404.*cannot be found"),
     ):
         client.playlist_video_ids("NOT_A_PLAYLIST")
@@ -147,12 +147,12 @@ def test_videos_returns_only_what_the_api_describes(fake_api: FakeYouTubeApi) ->
 def test_videos_batches_ids_in_groups_of_50() -> None:
     requested_batches: list[list[str]] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(request: httpx2.Request) -> httpx2.Response:
         requested_batches.append(request.url.params["id"].split(","))
-        return httpx.Response(200, json={"items": []})
+        return httpx2.Response(200, json={"items": []})
 
     video_ids = [f"video{number:06}" for number in range(120)]  # not real IDs
-    with YouTubeClient("test-key", transport=httpx.MockTransport(handler)) as client:
+    with YouTubeClient("test-key", transport=httpx2.MockTransport(handler)) as client:
         client.videos(video_ids)
 
     assert [len(batch) for batch in requested_batches] == [PAGE_SIZE, PAGE_SIZE, 20]
@@ -194,8 +194,8 @@ def test_creator_comments_asks_for_the_top_comments_as_plain_text(
 
 
 def test_creator_comments_is_empty_when_comments_are_turned_off() -> None:
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(403, json=read_fixture("error_comments_disabled.json"))
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(403, json=read_fixture("error_comments_disabled.json"))
 
-    with YouTubeClient("test-key", transport=httpx.MockTransport(handler)) as client:
+    with YouTubeClient("test-key", transport=httpx2.MockTransport(handler)) as client:
         assert client.creator_comments("eG0tXlljTtI") == []

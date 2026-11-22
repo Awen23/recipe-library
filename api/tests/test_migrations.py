@@ -1,14 +1,22 @@
 """The migrations in `migrations/`, run the way `alembic upgrade head` runs them."""
 
+from datetime import datetime
+
 import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import insert, inspect
 from sqlalchemy.exc import IntegrityError
 
-from recipes.storage import chapters, create_engine
+from recipes.storage import channels, chapters, create_engine, recipes, videos
 
-TABLES = {"channels", "videos", "chapters", "creator_comments"}
+TABLES = {
+    "channels",
+    "videos",
+    "chapters",
+    "creator_comments",
+    "recipes",
+}
 
 
 def test_upgrade_creates_the_tables(alembic_config: Config) -> None:
@@ -41,3 +49,30 @@ def test_a_chapter_needs_its_video_to_be_stored(alembic_config: Config) -> None:
     # No video has been stored, so the foreign key rejects this.
     with create_engine().begin() as connection, pytest.raises(IntegrityError):
         connection.execute(insert(chapters).values(**chapter, title="Intro"))
+
+
+def test_a_recipe_says_who_set_each_field(alembic_config: Config) -> None:
+    """Not from the data: checks the rule, with a made-up `_by`."""
+    command.upgrade(alembic_config, "head")
+    with create_engine().begin() as connection:
+        connection.execute(insert(channels).values(id="UC1", title="A channel"))
+        connection.execute(insert(videos).values(**VIDEO, channel_id="UC1"))
+        recipe = {"video_id": VIDEO["id"], "position": 0, "name": "Mayak tofu"}
+
+        with pytest.raises(IntegrityError):
+            connection.execute(
+                insert(recipes).values(**recipe, name_by="guess", start_by="code")
+            )
+
+
+# Not from the data: the fewest fields a stored video needs.
+VIDEO = {
+    "id": "vM3y-Wsxa24",
+    "title": "A video",
+    "description": "",
+    "duration_seconds": 60,
+    "published_at": datetime(2026, 1, 1),
+    "thumbnail_url": "https://i.ytimg.com/vi/vM3y-Wsxa24/mqdefault.jpg",
+    "embeddable": True,
+    "first_seen_at": datetime(2026, 1, 1),
+}

@@ -1,0 +1,87 @@
+{
+  "whr7iOKRXTA": {
+    "id": "msg_011ChHxpSCttYKg265utyJfo",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-haiku-5-5",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"recipes\":[{\"name\":\"Overnight oats\",\"chapter\":1,\"confidence\":85},{\"name\":\"Mexican inspired salad\",\"chapter\":2,\"confidence\":90},{\"name\":\"Sticky lemon & garlic tofu\",\"chapter\":3,\"confidence\":95},{\"name\":\"Hearty vegan lasagne\",\"chapter\":4,\"confidence\":95},{\"name\":\"Raspberry oat bars\",\"chapter\":5,\"confidence\":95}],\"note\":\"Breakfast chapter also links bagel, tofu egg and chocolate tofu pudding recipes, which were not spelled out in the video itself.\"}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 3310,
+      "output_tokens": 206
+    }
+  },
+  "nHr9LqK3PKc": {
+    "id": "msg_011ChHxpbL61JVeGAKnZXiXE",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-haiku-5-5",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"recipes\":[{\"name\":\"Peanut sweet potato stew\",\"chapter\":1,\"confidence\":97},{\"name\":\"Tofu burger patties\",\"chapter\":2,\"confidence\":97},{\"name\":\"Berry breakfast crumble bars\",\"chapter\":3,\"confidence\":97},{\"name\":\"Tofu enchiladas\",\"chapter\":4,\"confidence\":97},{\"name\":\"Whipped bean cookie dough\",\"chapter\":5,\"confidence\":96},{\"name\":\"Overnight focaccia\",\"chapter\":6,\"confidence\":92}],\"note\":\"The chapter titled 'Two Overnight Focaccias' is treated as one recipe that makes two focaccias.\"}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 3568,
+      "output_tokens": 529
+    }
+  },
+  "eG0tXlljTtI": {
+    "id": "msg_011ChHxpqNBWBXp45sDEvsDn",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-haiku-5-5",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"recipes\":[{\"name\":\"Spicy seitan sausage\",\"chapter\":2,\"confidence\":90}],\"note\":\"The video makes one seitan sausage (pepperoni or chorizo style), starting with the tofu-and-gluten mixing at chapter 2.\"}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 3114,
+      "output_tokens": 91
+    }
+  },
+  "gOxwhuntyMY": {
+    "id": "msg_011ChHxpxZmjKty9sy1ifsKa",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-haiku-5-5",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"recipes\":[{\"name\":\"Blueberry baked oatmeal\",\"chapter\":null,\"confidence\":95}],\"note\":\"The video has no chapters, so the recipe's start point is unknown.\"}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 1213,
+      "output_tokens": 67
+    }
+  },
+  "H0tkAEL6CS8": {
+    "id": "msg_011ChHxq5T219F4N2PHm7yuQ",
+    "type": "message",
+    "role": "assistant",
+    "model": "claude-haiku-5-5",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"recipes\":[{\"name\":\"Vegan brownies made with black beans\",\"chapter\":null,\"confidence\":92}],\"note\":\"\"}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "usage": {
+      "input_tokens": 2257,
+      "output_tokens": 203
+    }
+  }
+}

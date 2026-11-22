@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from itertools import batched
 from typing import Any, Self
 
-import httpx
+import httpx2
 
 # `PT#H#M#S`, or `P#DT#H#M#S` for videos a day or longer. Parts that are zero are
 # left out. See `contentDetails.duration` in
@@ -95,10 +95,10 @@ class YouTubeClient:
     """Calls the YouTube Data API with an API key. Use it in a `with` block."""
 
     def __init__(
-        self, api_key: str, *, transport: httpx.BaseTransport | None = None
+        self, api_key: str, *, transport: httpx2.BaseTransport | None = None
     ) -> None:
         # The key goes in a header, not the URL, so it never appears in logged URLs.
-        self._http = httpx.Client(
+        self._http = httpx2.Client(
             base_url=API_BASE_URL,
             headers={"X-Goog-Api-Key": api_key},
             timeout=30,
@@ -182,7 +182,7 @@ def _is_by_creator(thread: dict[str, Any]) -> bool:
     )
 
 
-def _error_from(response: httpx.Response) -> YouTubeError:
+def _error_from(response: httpx2.Response) -> YouTubeError:
     """Turn an error response into an exception with YouTube's message."""
     error = response.json()["error"]
     reasons = {detail["reason"] for detail in error["errors"]}
