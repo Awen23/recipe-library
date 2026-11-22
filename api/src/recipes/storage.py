@@ -36,8 +36,11 @@ from sqlalchemy import (
     update,
 )
 
-from recipes.chapters import parse_chapters
+from recipes import ai
+from recipes.ai import Reply, VideoAnswer, VideoText
+from recipes.chapters import Chapter, parse_chapters
 from recipes.playlist import Playlist
+from recipes.splitting import Recipe
 from recipes.youtube import Comment, Video
 
 DEFAULT_DATABASE_URL = "sqlite:///data/recipes.db"  # relative to the folder it runs in
@@ -257,6 +260,166 @@ def save_playlist(
         )
 
     return SaveSummary(added=len(new), removed=removed)
+
+
+def videos_to_split(engine: Engine) -> list[tuple[str, VideoText]]:
+    """Each video still in the playlist, by ID, with what Claude is shown about it."""
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(videos.c.id, videos.c.title, videos.c.description)
+            .where(videos.c.removed_at.is_(None))
+            .order_by(videos.c.first_seen_at, videos.c.id)
+        ).all()
+        chapters_by_video: dict[str, list[Chapter]] = {}
+        for chapter in connection.execute(
+            select(chapters).order_by(chapters.c.video_id, chapters.c.position)
+        ):
+            chapters_by_video.setdefault(chapter.video_id, []).append(
+                Chapter(chapter.start_seconds, chapter.title)
+            )
+        comments_by_video: dict[str, list[str]] = {}
+        for comment in connection.execute(
+            select(creator_comments).order_by(creator_comments.c.published_at)
+        ):
+            comments_by_video.setdefault(comment.video_id, []).append(comment.text)
+    return [
+        (
+            row.id,
+            VideoText(
+                title=row.title,
+                description=row.description,
+                chapters=chapters_by_video.get(row.id, []),
+                creator_comments=comments_by_video.get(row.id, []),
+            ),
+        )
+        for row in rows
+    ]
+
+
+def _current_answers() -> sqlalchemy.ColumnElement[bool]:
+    """The `ai_responses` rows for the prompt version, model and effort in use."""
+    return (
+        (ai_responses.c.prompt_version == ai.PROMPT_VERSION)
+        & (ai_responses.c.model == ai.MODEL)
+        & (ai_responses.c.effort == ai.EFFORT)
+    )
+
+
+def stored_answers(engine: Engine) -> dict[str, VideoAnswer | None]:
+    """Claude's stored answers for the prompt and model in use, by video ID. A video
+    Claude declined to answer about maps to None; one not asked yet is missing."""
+    with engine.connect() as connection:
+        rows = connection.execute(
+            select(ai_responses.c.video_id, ai_responses.c.answer).where(
+                _current_answers()
+            )
+        )
+        return {
+            row.video_id: None
+            if row.answer is None
+            else VideoAnswer.model_validate(row.answer)
+            for row in rows
+        }
+
+
+def save_answer(
+    engine: Engine, video_id: str, reply: Reply, *, now: datetime | None = None
+) -> None:
+    """Store Claude's reply about a video, for the prompt and model in use."""
+    with engine.begin() as connection:
+        connection.execute(
+            insert(ai_responses).values(
+                video_id=video_id,
+                prompt_version=ai.PROMPT_VERSION,
+                model=ai.MODEL,
+                effort=ai.EFFORT,
+                answer=reply.answer.model_dump() if reply.answer else None,
+                stop_reason=reply.stop_reason,
+                input_tokens=reply.input_tokens,
+                output_tokens=reply.output_tokens,
+                created_at=now or _utc_now(),
+            )
+        )
+
+
+@dataclass(frozen=True)
+class RecipesSummary:
+    """What changed in the `recipes` table when a video's recipes were saved."""
+
+    added: int
+    removed: int  # marked as removed, because the video has fewer recipes now
+
+
+def save_recipes(
+    engine: Engine,
+    video_id: str,
+    found: Sequence[Recipe],
+    *,
+    now: datetime | None = None,
+) -> RecipesSummary:
+    """Store a video's recipes, matched to the stored ones by position.
+
+    A stored recipe keeps its ID, and any group of fields set by hand. Stored
+    recipes past the last one found are marked as removed, not deleted, so their
+    hand-set fields are kept. It all happens in one transaction.
+    """
+    now = now or _utc_now()
+    with engine.begin() as connection:
+        stored = {
+            row.position: row
+            for row in connection.execute(
+                select(recipes).where(recipes.c.video_id == video_id)
+            )
+        }
+        new_rows = []
+        for recipe in found:
+            row = stored.get(recipe.position)
+            if row is None:
+                new_rows.append(
+                    {
+                        "video_id": video_id,
+                        "position": recipe.position,
+                        "removed_at": None,
+                    }
+                    | _name_fields(recipe)
+                    | _start_fields(recipe)
+                )
+                continue
+            values: dict[str, Any] = {"removed_at": None}
+            if row.name_by != "hand":
+                values |= _name_fields(recipe)
+            if row.start_by != "hand":
+                values |= _start_fields(recipe)
+            connection.execute(
+                update(recipes).where(recipes.c.id == row.id).values(**values)
+            )
+        _insert(connection, recipes, new_rows)
+        removed = connection.execute(
+            update(recipes)
+            .where(
+                recipes.c.video_id == video_id,
+                recipes.c.position >= len(found),
+                recipes.c.removed_at.is_(None),
+            )
+            .values(removed_at=now)
+        ).rowcount
+    return RecipesSummary(added=len(new_rows), removed=removed)
+
+
+def _name_fields(recipe: Recipe) -> dict[str, Any]:
+    return {
+        "name": recipe.name,
+        "name_by": recipe.name_by,
+        "name_confidence": recipe.name_confidence,
+    }
+
+
+def _start_fields(recipe: Recipe) -> dict[str, Any]:
+    return {
+        "chapter_position": recipe.chapter_position,
+        "start_seconds": recipe.start_seconds,
+        "start_by": recipe.start_by,
+    }
 
 
 def _insert(

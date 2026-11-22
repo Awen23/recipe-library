@@ -5,9 +5,12 @@ import sys
 from collections.abc import Sequence
 
 from dotenv import dotenv_values, find_dotenv
+from sqlalchemy import Engine
 
+from recipes import storage
+from recipes.ai import AIError, Claude
 from recipes.playlist import fetch_playlist
-from recipes.storage import create_engine, needs_migrating, save_playlist
+from recipes.splitting import split_video
 from recipes.youtube import YouTubeClient, YouTubeError
 
 
@@ -22,24 +25,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     fetch.add_argument("playlist_id", help="the ID after `list=` in its URL")
     fetch.set_defaults(run=_fetch)
 
+    build = commands.add_parser(
+        "build", help="work out the recipes in the fetched videos, asking Claude"
+    )
+    build.set_defaults(run=_build)
+
     args = parser.parse_args(argv)
     return args.run(args)
 
 
 def _fetch(args: argparse.Namespace) -> int:
-    api_key = dotenv_values(find_dotenv(usecwd=True)).get("YOUTUBE_API_KEY")
+    api_key = _secret("YOUTUBE_API_KEY")
     if not api_key:
-        print("error: YOUTUBE_API_KEY is not set. Add it to .env.", file=sys.stderr)
         return 1
 
     # Checked before fetching, so the API quota isn't spent on a fetch that can't
     # be saved.
-    engine = create_engine()
-    if needs_migrating(engine):
-        print(
-            "error: the database isn't up to date. Run `alembic upgrade head`.",
-            file=sys.stderr,
-        )
+    engine = _open_database()
+    if engine is None:
         return 1
 
     try:
@@ -49,10 +52,85 @@ def _fetch(args: argparse.Namespace) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
-    summary = save_playlist(playlist, engine)
+    summary = storage.save_playlist(playlist, engine)
     print(
         f"Saved {len(playlist.videos)} videos ({summary.added} new). "
         f"Skipped {playlist.unavailable_count} deleted or private. "
         f"Marked {summary.removed} as removed from the playlist."
     )
     return 0
+
+
+def _build(_args: argparse.Namespace) -> int:
+    engine = _open_database()
+    if engine is None:
+        return 1
+
+    videos = storage.videos_to_split(engine)
+    answers = storage.stored_answers(engine)
+    to_ask = [(id_, video) for id_, video in videos if id_ not in answers]
+
+    # Each answer is stored as it arrives, so a build that stops part way doesn't
+    # pay for the same answers again.
+    failed = input_tokens = output_tokens = 0
+    if to_ask:
+        api_key = _secret("ANTHROPIC_API_KEY")
+        if not api_key:
+            return 1
+        print(f"Asking Claude about {len(to_ask)} videos…")
+        with Claude(api_key) as claude:
+            for video_id, video in to_ask:
+                try:
+                    reply = claude.find_recipes(video)
+                except AIError as error:
+                    print(f"warning: {video_id}: {error}", file=sys.stderr)
+                    failed += 1
+                    continue
+                storage.save_answer(engine, video_id, reply)
+                answers[video_id] = reply.answer
+                input_tokens += reply.input_tokens
+                output_tokens += reply.output_tokens
+
+    added = removed = total = 0
+    for video_id, video in videos:
+        if video_id not in answers:
+            continue  # asking failed; its stored recipes are left as they are
+        found = split_video(video.title, video.chapters, answers[video_id])
+        summary = storage.save_recipes(engine, video_id, found)
+        added, removed = added + summary.added, removed + summary.removed
+        total += len(found)
+
+    print(
+        f"Built {total} recipes from {len(videos) - failed} videos "
+        f"({added} new, {removed} marked as removed). "
+        f"Asked Claude about {len(to_ask) - failed} videos "
+        f"({input_tokens} input and {output_tokens} output tokens)."
+    )
+    if failed:
+        print(
+            f"error: Claude couldn't answer about {failed} videos. "
+            "Run `recipes build` again to retry them.",
+            file=sys.stderr,
+        )
+        return 1
+    return 0
+
+
+def _secret(name: str) -> str | None:
+    """A key from .env, or None after saying how to set it."""
+    value = dotenv_values(find_dotenv(usecwd=True)).get(name)
+    if not value:
+        print(f"error: {name} is not set. Add it to .env.", file=sys.stderr)
+    return value or None
+
+
+def _open_database() -> Engine | None:
+    """The database, or None after saying how to bring it up to date."""
+    engine = storage.create_engine()
+    if storage.needs_migrating(engine):
+        print(
+            "error: the database isn't up to date. Run `alembic upgrade head`.",
+            file=sys.stderr,
+        )
+        return None
+    return engine

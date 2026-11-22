@@ -4,11 +4,12 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Engine, func, select
 
+from recipes.ai import Claude
 from recipes.entrypoints import cli
-from recipes.storage import videos
+from recipes.storage import recipes, videos
 from recipes.youtube import YouTubeClient
 
-from fakes import FakeYouTubeApi
+from fakes import FakeClaudeApi, FakeYouTubeApi
 
 
 @pytest.fixture(autouse=True)
@@ -17,7 +18,9 @@ def isolated(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     data/ are never touched."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("DATABASE_URL", raising=False)  # set again by `engine`
-    Path(".env").write_text("YOUTUBE_API_KEY=test-key\n", encoding="utf-8")
+    Path(".env").write_text(
+        "YOUTUBE_API_KEY=test-key\nANTHROPIC_API_KEY=test-key\n", encoding="utf-8"
+    )
 
 
 def test_fetch_saves_the_playlist(
@@ -68,3 +71,61 @@ def test_no_command_shows_the_usage(capsys: pytest.CaptureFixture[str]) -> None:
 
     assert exit_info.value.code == 2
     assert "usage: recipes" in capsys.readouterr().err
+
+
+@pytest.fixture
+def fetched(
+    monkeypatch: pytest.MonkeyPatch, fake_api: FakeYouTubeApi, engine: Engine
+) -> Engine:
+    """The five fixture videos fetched, and Claude replaced by the fake."""
+    monkeypatch.setattr(
+        cli, "YouTubeClient", partial(YouTubeClient, transport=fake_api.transport)
+    )
+    assert cli.main(["fetch", "PLAYLIST_ID"]) == 0
+    return engine
+
+
+def test_build_asks_claude_about_each_video_and_saves_the_recipes(
+    monkeypatch: pytest.MonkeyPatch,
+    fetched: Engine,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake_claude = FakeClaudeApi()
+    monkeypatch.setattr(cli, "Claude", partial(Claude, transport=fake_claude.transport))
+
+    assert cli.main(["build"]) == 0
+
+    assert len(fake_claude.requests) == 5
+    with fetched.connect() as connection:
+        names = set(connection.scalars(select(recipes.c.name)))
+    # 5 + 6 + 1 + 1 + 1 recipes in Claude's recorded answers.
+    assert len(names) == 14
+    assert "Spicy seitan sausage" in names
+    assert "Built 14 recipes from 5 videos" in capsys.readouterr().out
+
+
+def test_building_again_asks_claude_nothing(
+    monkeypatch: pytest.MonkeyPatch, fetched: Engine
+) -> None:
+    fake_claude = FakeClaudeApi()
+    monkeypatch.setattr(cli, "Claude", partial(Claude, transport=fake_claude.transport))
+    cli.main(["build"])
+    with fetched.connect() as connection:
+        ids = list(connection.scalars(select(recipes.c.id).order_by(recipes.c.id)))
+
+    assert cli.main(["build"]) == 0
+
+    assert len(fake_claude.requests) == 5  # all from the first build
+    with fetched.connect() as connection:
+        assert (
+            list(connection.scalars(select(recipes.c.id).order_by(recipes.c.id))) == ids
+        )
+
+
+def test_build_without_an_api_key_says_how_to_set_one(
+    fetched: Engine, capsys: pytest.CaptureFixture[str]
+) -> None:
+    Path(".env").write_text("YOUTUBE_API_KEY=test-key\n", encoding="utf-8")
+
+    assert cli.main(["build"]) == 1
+    assert "ANTHROPIC_API_KEY is not set" in capsys.readouterr().err
