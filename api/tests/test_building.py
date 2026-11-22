@@ -12,6 +12,8 @@ from recipes.youtube import YouTubeClient
 
 from fakes import FakeClaudeApi, FakeYouTubeApi, read_fixture
 
+MEAL_PREP_ID = "whr7iOKRXTA"  # a meal prep video with five recipes
+
 
 @pytest.fixture
 def fetched(engine: Engine, fake_api: FakeYouTubeApi) -> Engine:
@@ -51,9 +53,7 @@ def test_build_stores_each_videos_recipes(
     # 5 + 6 + 1 + 1 + 1 recipes in Claude's recorded answers.
     assert (summary.videos, summary.recipes, summary.failed) == (5, 14, {})
     assert len(fake_claude.requests) == 5
-    assert ("whr7iOKRXTA", "Raspberry oat bars") in [
-        r[1:] for r in recipe_rows(fetched)
-    ]
+    assert (MEAL_PREP_ID, "Raspberry oat bars") in [r[1:] for r in recipe_rows(fetched)]
 
 
 def test_building_again_leaves_the_recipes_alone(

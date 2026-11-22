@@ -4,11 +4,14 @@ from recipes.splitting import split_video
 
 from fakes import read_fixture, recorded_answer
 
-WHR7_CHAPTERS = parse_chapters(read_fixture("descriptions.json")["whr7iOKRXTA"])
+MEAL_PREP_ID = "whr7iOKRXTA"  # a meal prep video with five recipes
+MEAL_PREP_CHAPTERS = parse_chapters(read_fixture("descriptions.json")[MEAL_PREP_ID])
 
 
 def test_each_recipe_claude_found_starts_at_its_chapter() -> None:
-    recipes = split_video("Meal prep", WHR7_CHAPTERS, recorded_answer("whr7iOKRXTA"))
+    recipes = split_video(
+        "Meal prep", MEAL_PREP_CHAPTERS, recorded_answer(MEAL_PREP_ID)
+    )
 
     assert [(r.name, r.chapter_position, r.start_seconds) for r in recipes] == [
         ("Overnight oats", 1, 102),
@@ -40,7 +43,7 @@ def test_only_the_first_recipe_in_a_chapter_gets_its_start() -> None:
         note="",
     )
 
-    recipes = split_video("Meal prep", WHR7_CHAPTERS, answer)
+    recipes = split_video("Meal prep", MEAL_PREP_CHAPTERS, answer)
 
     assert [(r.chapter_position, r.start_seconds) for r in recipes] == [
         (1, 102),
@@ -49,13 +52,13 @@ def test_only_the_first_recipe_in_a_chapter_gets_its_start() -> None:
 
 
 def test_without_an_answer_each_chapter_is_a_recipe() -> None:
-    recipes = split_video("Meal prep", WHR7_CHAPTERS, None)
+    recipes = split_video("Meal prep", MEAL_PREP_CHAPTERS, None)
 
     assert [(r.name, r.start_seconds) for r in recipes][:2] == [
         ("Intro", 0),
         ("Breakfasts", 102),
     ]
-    assert len(recipes) == len(WHR7_CHAPTERS)
+    assert len(recipes) == len(MEAL_PREP_CHAPTERS)
     assert {(r.name_by, r.start_by) for r in recipes} == {("code", "code")}
 
 
@@ -63,7 +66,7 @@ def test_a_video_with_no_recipes_found_is_one_named_after_it() -> None:
     """Not from the data: checks the rule, with a made-up empty answer."""
     title = read_fixture("videos.json")["items"][0]["snippet"]["title"]
 
-    recipes = split_video(title, WHR7_CHAPTERS, VideoAnswer(recipes=[], note=""))
+    recipes = split_video(title, MEAL_PREP_CHAPTERS, VideoAnswer(recipes=[], note=""))
 
     assert [(r.name, r.name_by, r.start_seconds) for r in recipes] == [
         (title, "code", None)

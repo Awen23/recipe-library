@@ -1,177 +1,87 @@
 {
   "whr7iOKRXTA": {
-    "model": "claude-haiku-5-5",
     "id": "msg_011ChHxpSCttYKg265utyJfo",
     "type": "message",
     "role": "assistant",
+    "model": "claude-haiku-5-5",
     "content": [
       {
         "type": "text",
         "text": "{\"recipes\":[{\"name\":\"Overnight oats\",\"chapter\":1,\"confidence\":85},{\"name\":\"Mexican inspired salad\",\"chapter\":2,\"confidence\":90},{\"name\":\"Sticky lemon & garlic tofu\",\"chapter\":3,\"confidence\":95},{\"name\":\"Hearty vegan lasagne\",\"chapter\":4,\"confidence\":95},{\"name\":\"Raspberry oat bars\",\"chapter\":5,\"confidence\":95}],\"note\":\"Breakfast chapter also links bagel, tofu egg and chocolate tofu pudding recipes, which were not spelled out in the video itself.\"}"
       }
     ],
-    "container": null,
     "stop_reason": "end_turn",
-    "stop_sequence": null,
-    "stop_details": null,
     "usage": {
       "input_tokens": 3310,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 206,
-      "output_tokens_details": {
-        "thinking_tokens": 0
-      },
-      "service_tier": "standard",
-      "inference_geo": "global",
-      "speed": "standard"
-    },
-    "diagnostics": null
+      "output_tokens": 206
+    }
   },
   "nHr9LqK3PKc": {
-    "model": "claude-haiku-5-5",
     "id": "msg_011ChHxpbL61JVeGAKnZXiXE",
     "type": "message",
     "role": "assistant",
+    "model": "claude-haiku-5-5",
     "content": [
-      {
-        "type": "thinking",
-        "thinking": "",
-        "signature": "CAQSiwoKEAgUGAI4AUIIdGhpbmtpbmcSDCYk5UwykYe8M/MLDRoMbOQ+r9GOLqUIIiANIjBTb7AQM49+5RCxxWOdn7OAKzKoi0m0DQi+5lod3mq/Qc68arlUUHbrlWiw9RGgma4qqAkgj1Ua3eCakYaZlI7Xh6EkcxLB4uQeGujIad2kEgtIoUCuMLSkyltIGBg4cvpAgxOeCg/X9bAug6pyQYl4H06J/fglgGcv1i9TvukLoGDtdD4US66HO6sD+kL3syTiH7JxrrYsh56doMzxWqyyC8AQtr88w2YjTJq6TTzgu3vQxnHC7jjK2zTxmaiqecmFqKHrEgaic9ZPYfeom3Sk9QSfKAKCOLm3c+Jh9kgRwiZdkWH+2xSHbVcnzaD7aUqoldWHyJ8NkkyH7iWeWrv4xqxcVEhxQOwyZh0ILwqR1MGlaszmgSPzppKJ6guQ5/oXVJiAM9+7XvBZB2qDI/zx+Jdq7pzh8MuRhc9gaplUJ+qR8CQCiNwjO7qe4GmcoonHtZD7lMAsQViC+dULWxKOV+sOiTr+WoaK9N1dgeKeRdjvpymUhPJpr/YZeYeNqMTkxl3ae8jhnspt5lRzmIoBWDIHkynfCWJGDPuETLlGyfRK4jlFfnOWqU3EWFsSoNzVOQ5aayoghkmbOMuQlw+HWE2anZHcNI/H4YzFHz7Laj+Eq9KxH2SYWFNKAXg3B1PmwxSv1a5H5Rnsg5XPj5vp+vu8GCNsDwDab8267lLjnDupiw1DHbSnlDhOWGC7y+YqOx4wQaldWX13xm6ohO3IkIlMAN/Bxp72JhNdHHHQoVO0vDi6kul3XmrTKIGnVDGcVc4IfYSuYwZRFVOVa/N6oqv2vbgjFByv/nlPS/VbEhQfdZUT2iP8fhIXDXT0R++U7Y+JspebkgDh9sKO/5mJgUz9jlrnzEqk1eVGSv9SnivbyDoyUvzrhlXG48FHFGWvHr+8S+YsP/4PRVpUqdQrlp9HnZ1sgbHqakBIdIqZxP8PkOuje1J6aOfx9K6hOaG7Ve8qGbVSB1xuOiDKPl+EclSkjksqXygdqY1m3c7hBtphIVUhwT2tLljIJP83VtmwhTB0e31vQkJsHC9rZLjlB8LIICsXqrBKbOFKiojNCqg8oO/ypT0//eZo+Pu9PTSWesuXk3aVtGvNaAr89mNXtzThZDL9109TtnfuqoiIqStANbQbzuSFBqzYmGbYcqp2125932iGWcPYgYPBERFrNCZ5l4Fa16rbXhczIhnrcK3GuzDTAiV78BD1lsYXmigrn2XdKlHsPVlLlbNmIcOenxKE5bjxQaQdIAXzScV5b4Qdcs0HzeUP8OnYAlqZ0oqhpVmYGjUkjHStGjlicivm4wYb6yGTo2tfk5RTLJnoc1/9tumk3cJ1K/Z99GbiE+WE+KvngcAxwv8aqBCPclhkApcER55erz3yTBpBRarwVdUNi0E+hbXqw68yulZ/Srt6bGxjkH1H+/0GncWvNrHgaQnUBVRvqmNh6kbIEz/TK/OvvFV/k9DMO9I9xDcZ6j0fNprfdxdkcE/MAQKMt7b5NrxcjC2rmKJL6Hg4BJtoLsrnTnwCM80Y2Aoz8+boL061iGiscLZGSPloLVoqsje3FYa2UsBnFAMDXn4X1JU6j2StLARYd7eRSd/5iB6Ua86z5aDBJr0XVlFL3OCTWpvDhvgC3r4Cy3luh78IoUsliFkUaMtnChr1z46XGAE="
-      },
       {
         "type": "text",
         "text": "{\"recipes\":[{\"name\":\"Peanut sweet potato stew\",\"chapter\":1,\"confidence\":97},{\"name\":\"Tofu burger patties\",\"chapter\":2,\"confidence\":97},{\"name\":\"Berry breakfast crumble bars\",\"chapter\":3,\"confidence\":97},{\"name\":\"Tofu enchiladas\",\"chapter\":4,\"confidence\":97},{\"name\":\"Whipped bean cookie dough\",\"chapter\":5,\"confidence\":96},{\"name\":\"Overnight focaccia\",\"chapter\":6,\"confidence\":92}],\"note\":\"The chapter titled 'Two Overnight Focaccias' is treated as one recipe that makes two focaccias.\"}"
       }
     ],
-    "container": null,
     "stop_reason": "end_turn",
-    "stop_sequence": null,
-    "stop_details": null,
     "usage": {
       "input_tokens": 3568,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 529,
-      "output_tokens_details": {
-        "thinking_tokens": 304
-      },
-      "service_tier": "standard",
-      "inference_geo": "global",
-      "speed": "standard"
-    },
-    "diagnostics": null
+      "output_tokens": 529
+    }
   },
   "eG0tXlljTtI": {
-    "model": "claude-haiku-5-5",
     "id": "msg_011ChHxpqNBWBXp45sDEvsDn",
     "type": "message",
     "role": "assistant",
+    "model": "claude-haiku-5-5",
     "content": [
       {
         "type": "text",
         "text": "{\"recipes\":[{\"name\":\"Spicy seitan sausage\",\"chapter\":2,\"confidence\":90}],\"note\":\"The video makes one seitan sausage (pepperoni or chorizo style), starting with the tofu-and-gluten mixing at chapter 2.\"}"
       }
     ],
-    "container": null,
     "stop_reason": "end_turn",
-    "stop_sequence": null,
-    "stop_details": null,
     "usage": {
       "input_tokens": 3114,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 91,
-      "output_tokens_details": {
-        "thinking_tokens": 0
-      },
-      "service_tier": "standard",
-      "inference_geo": "global",
-      "speed": "standard"
-    },
-    "diagnostics": null
+      "output_tokens": 91
+    }
   },
   "gOxwhuntyMY": {
-    "model": "claude-haiku-5-5",
     "id": "msg_011ChHxpxZmjKty9sy1ifsKa",
     "type": "message",
     "role": "assistant",
+    "model": "claude-haiku-5-5",
     "content": [
       {
         "type": "text",
         "text": "{\"recipes\":[{\"name\":\"Blueberry baked oatmeal\",\"chapter\":null,\"confidence\":95}],\"note\":\"The video has no chapters, so the recipe's start point is unknown.\"}"
       }
     ],
-    "container": null,
     "stop_reason": "end_turn",
-    "stop_sequence": null,
-    "stop_details": null,
     "usage": {
       "input_tokens": 1213,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 67,
-      "output_tokens_details": {
-        "thinking_tokens": 0
-      },
-      "service_tier": "standard",
-      "inference_geo": "global",
-      "speed": "standard"
-    },
-    "diagnostics": null
+      "output_tokens": 67
+    }
   },
   "H0tkAEL6CS8": {
-    "model": "claude-haiku-5-5",
     "id": "msg_011ChHxq5T219F4N2PHm7yuQ",
     "type": "message",
     "role": "assistant",
+    "model": "claude-haiku-5-5",
     "content": [
-      {
-        "type": "thinking",
-        "thinking": "",
-        "signature": "CAQS9gcKEAgUGAI4AUIIdGhpbmtpbmcSDMD0boYzLukz9/sKZhoMfTDG5idWv9ar/KjlIjBfzr2V0BmVmQDc26bxGWkZ4LQG8VRRDtMRzBXbb5/cHRH/G4MW6HtLZOP4SUlhQy4qkweAoTY/VuQsaMDJJXEdQ0Lkf2u0E5tl9eOi+JBMKkNmOuG3dbjM84RP3XHayrOvGqdWZ6mh1WNOrWeFytZbGtbgGzEz7Q96CMmCZ373dHjXTE7XifbEvABq33vXp2wtTZkdOxaHHcv6usJk6syv1LalhTHWUZA5ixqoT87WOsd2L2SPs+MdHo0EI0PZ5MaT+m7Ti9XL3iDPqf6jVTgMQp1MPZGnzxMzH3OhLj+nzLQTVrFm5hB5gem4q+UZ6Tllp5md8jxd/HazzaLmwcC5gxS6Hzy1jf63rFsYI9Va/UNcY4UJ7rWqYzhENVSLQNkqpBtKdIrqPH/jXqlkAuxtSorRwzm28OI7omwJ6crRvipOXIdpADwrVJDEl21XP7RqngAOW4JGOfQ2Gk1VM8Y/PC3MzktDiR9uKN3xF55hI2p2MTvwqHhwpxxa7cLwVDzEXF/wp7Dx7ow6WMpCCYLTqk+2Q0PlYaAfvYR0Ob9GRg+UQR9c5Ze+vFZv4G3v3QOHU4adEAogruPOOyZzV94yoKfxE0tV7pQCDCKN3F0FsPeFbJGyjrFAkVIyIUu6V05eqVCSdTRaQ5FOo6G1ya1DdfuRFf2sSSIkLTgO5NE1sgB4xgI9cQliyCPWRo7PcAc7Y2Q43Qv0Zk85oS3xsEz0mOlQg/HxCFwjh7VA+xE69dece+2mV0Hp9hwh9RHubuiyvhBXywDzBkUcGaBt5zaCnJsIvI0JNKlGo6O3y+An1kAqhLg66zu5ZHFXjhGsjvW7PGVkirhSFpeslsX5Oi3Mxaquma4oBZPqZrXGbGYWrLsQduHohsMbw8IbdMz2/ZcMjf/Mf3GCiYVzzvuTc7FZYzjC4EDjyKtE29wfeRERJirmhiF97gfHxPCBL5TDw4yZVcO4U85WsO9X9gNvBJWTL91n7fJvBqqQ29LgIlYOyzmnpqRhOspz+0GmlnQxhBIvOX+b6G8zP4eyXWIKpZCn/PHM50UkdckFmHYMqbY2493Kzc4+ytwfLrtE4Qr1cKvea0a0xXEZkmVGX1UCY769ZuHkI9ksDMZ6Japqz0u/aa6tAZudyzSXwvrB9nJrzzvpDN0ZDCKINAz5Y+rm259cRZvdhCXPq2izkzUUT/m0k2GelC/Q9yetRc2XnveoTuX2NnCk9Bud+iwYpIFVggON9zYtxo+Xkcft8FxLAjN1pojqpQktwa9QD+VWAtdzv4Q/Z5aft2IYAQ=="
-      },
       {
         "type": "text",
         "text": "{\"recipes\":[{\"name\":\"Vegan brownies made with black beans\",\"chapter\":null,\"confidence\":92}],\"note\":\"\"}"
       }
     ],
-    "container": null,
     "stop_reason": "end_turn",
-    "stop_sequence": null,
-    "stop_details": null,
     "usage": {
       "input_tokens": 2257,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 203,
-      "output_tokens_details": {
-        "thinking_tokens": 157
-      },
-      "service_tier": "standard",
-      "inference_geo": "global",
-      "speed": "standard"
-    },
-    "diagnostics": null
+      "output_tokens": 203
+    }
   }
 }
