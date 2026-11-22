@@ -134,12 +134,11 @@ An outline only. Each PR is planned in detail before it starts, and its architec
 - `recipes fetch <playlist-id>` stores new videos with their channels, chapters and creator comments, and marks videos that have left the playlist as removed.
 - *Plain code only.*
 
-**2. Recipes**
-- **Plain code:** split videos at their chapters, give videos without chapters one recipe, and use chapter titles as names.
-- **AI:**
-  - Check every video with chapters, deciding which chapters are recipes and which are steps or padding (such as "make the toppings" or "errands interlude"). Some single-recipe videos have step chapters, and some chapters hold several recipes.
-  - Count and name the recipes in multi-recipe videos with no timestamps.
-  - Name every recipe that has no chapter title, using the video title, the description and the creator's comment.
+**2. Recipes** *(done)*
+- `recipes build` splits every video in the playlist into recipes. It asks Claude once per video, keeps each answer in `ai_responses`, and asks again only when the prompt, model or effort changes. Rebuilding keeps each recipe's ID and anything set by hand.
+- **AI** (Claude Haiku 5.5, one structured answer per video): lists the recipes the video teaches, in order, with each one's name and the chapter it starts in. This covers telling recipe chapters from step chapters or padding (such as "make the toppings" or "errands interlude"), chapters that hold several recipes, multi-recipe videos with no timestamps, and naming dishes from clickbait titles using the description and the creator's comments.
+- **Plain code:** a recipe starts where its chapter starts. When a chapter holds several recipes, only the first gets the start. A video where Claude finds no recipe is one recipe named after the video, so every video can be found. Without an answer (Claude declined), each chapter is a recipe named after the chapter.
+- *Model:* Haiku 5.5, Sonnet 5.5 and Opus 5.5 were compared on 30 labelled videos, picked by type. Haiku matched as many recipe counts as Opus, so the cheapest model is used.
 
 PRs 3 and 4 look for each recipe's details one place at a time, most common first, and stop at the first place that has its ingredients. Linked pages come first: they're the most common source, and reading them needs no AI.
 
@@ -154,6 +153,6 @@ For recipes still without details:
 *Done when:* the numbers roughly match what Phase 1 found, so anything the code misses shows up.
 - **Recipes:** about 740, and every available video has at least one.
 - **Ingredients:** found for about as many videos as Phase 1 found, from each source: about 120 from descriptions, 60 from creator comments and 120 from linked pages.
-- **Agreement:** on a random sample of 30 videos, the number of recipes matches the exploration labels in `api/data/exploration/` for at least 27.
+- **Agreement:** on 30 videos picked by type (12 with chapters, 5 multi-recipe without timestamps, 13 others) and checked by hand, the number of recipes matches for at least 27.
 - **Fetching again:** keeps every recipe's ID, and leaves hand corrections untouched.
 - **AI-made fields** are marked as AI-made, and the tests pass.
