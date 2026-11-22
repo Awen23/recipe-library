@@ -53,8 +53,28 @@ class Video:
         )
 
 
+@dataclass(frozen=True)
+class Comment:
+    """A top-level comment on a video."""
+
+    id: str
+    text: str
+    published_at: str
+
+    @classmethod
+    def from_api(cls, thread: dict[str, Any]) -> Self:
+        """Build a Comment from one item of a `commentThreads.list` response."""
+        comment = thread["snippet"]["topLevelComment"]
+        return cls(
+            id=comment["id"],
+            text=comment["snippet"]["textDisplay"],
+            published_at=comment["snippet"]["publishedAt"],
+        )
+
+
 API_BASE_URL = "https://www.googleapis.com/youtube/v3"
 PAGE_SIZE = 50  # the most items the API returns per request
+COMMENTS_TO_CHECK = 20  # a creator's pinned or recipe comment is near the top
 
 
 class YouTubeError(Exception):
@@ -63,6 +83,10 @@ class YouTubeError(Exception):
 
 class QuotaExceededError(YouTubeError):
     """The API key has used up its daily quota."""
+
+
+class CommentsDisabledError(YouTubeError):
+    """The video has its comments turned off."""
 
 
 class YouTubeClient:
@@ -112,6 +136,28 @@ class YouTubeClient:
             videos.extend(Video.from_api(item) for item in page["items"])
         return videos
 
+    def creator_comments(self, video_id: str) -> list[Comment]:
+        """The comments by the video's own channel, among its top comments.
+
+        Returns none if the video has its comments turned off.
+        """
+        params: dict[str, Any] = {
+            "part": "snippet",
+            "videoId": video_id,
+            "maxResults": COMMENTS_TO_CHECK,
+            "order": "relevance",
+            "textFormat": "plainText",
+        }
+        try:
+            page = self._get("commentThreads", params)
+        except CommentsDisabledError:
+            return []
+        return [
+            Comment.from_api(thread)
+            for thread in page["items"]
+            if _is_by_creator(thread)
+        ]
+
     def _get(self, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
         response = self._http.get(endpoint, params=params)
         if response.is_error:
@@ -125,6 +171,15 @@ def _video_ids_on(page: dict[str, Any]) -> list[str]:
     return [item["contentDetails"]["videoId"] for item in page["items"]]
 
 
+def _is_by_creator(thread: dict[str, Any]) -> bool:
+    """Whether one item of a `commentThreads` response was posted by the video's
+    own channel."""
+    return (
+        thread["snippet"]["channelId"]
+        == thread["snippet"]["topLevelComment"]["snippet"]["authorChannelId"]["value"]
+    )
+
+
 def _error_from(response: httpx.Response) -> YouTubeError:
     """Turn an error response into an exception with YouTube's message."""
     error = response.json()["error"]
@@ -134,6 +189,8 @@ def _error_from(response: httpx.Response) -> YouTubeError:
             "The YouTube API daily quota is used up. "
             "It resets at midnight Pacific time."
         )
+    if "commentsDisabled" in reasons:
+        return CommentsDisabledError("This video has its comments turned off.")
     return YouTubeError(
         f"YouTube API error (HTTP {response.status_code}): {error['message']}"
     )

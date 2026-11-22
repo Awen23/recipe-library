@@ -19,7 +19,7 @@ def test_save_writes_the_playlist_as_json(tmp_path: Path) -> None:
     # tmp_path starts empty, so save_playlist has to create the data/ folder itself.
     path = tmp_path / "data" / "playlist.json"
 
-    save_playlist(Playlist("PLAYLIST_ID", (video("whr7iOKRXTA"),), 2), path)
+    save_playlist(Playlist("PLAYLIST_ID", (video("whr7iOKRXTA"),), 2, {}), path)
 
     assert json.loads(path.read_text(encoding="utf-8")) == {
         "playlist_id": "PLAYLIST_ID",
@@ -49,7 +49,7 @@ def test_save_includes_the_chapters_in_each_description(tmp_path: Path) -> None:
     with_chapters = replace(video("whr7iOKRXTA"), description=description)
     path = tmp_path / "playlist.json"
 
-    save_playlist(Playlist("PLAYLIST_ID", (with_chapters,), 0), path)
+    save_playlist(Playlist("PLAYLIST_ID", (with_chapters,), 0, {}), path)
 
     [saved] = json.loads(path.read_text(encoding="utf-8"))["videos"]
     assert saved["chapters"][:2] == [
@@ -62,7 +62,7 @@ def test_save_includes_the_chapters_in_each_description(tmp_path: Path) -> None:
 def test_save_keeps_non_english_text_readable(tmp_path: Path) -> None:
     path = tmp_path / "playlist.json"
 
-    save_playlist(Playlist("PLAYLIST_ID", (video("eG0tXlljTtI"),), 0), path)
+    save_playlist(Playlist("PLAYLIST_ID", (video("eG0tXlljTtI"),), 0, {}), path)
 
     # The Japanese in this title is written as real characters, not as escape codes
     # (a backslash, "u" and four hex digits), so the file stays readable.

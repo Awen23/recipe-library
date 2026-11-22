@@ -21,6 +21,8 @@ class FakeYouTubeApi:
     a `nextPageToken`; asking with any `pageToken` gets page 2, which has none.
     `videos` only has details for the videos in `videos.json`, so, like the real
     API, it leaves the deleted and private ones out.
+    `commentThreads` serves the real top comments of `eG0tXlljTtI`, and none for
+    any other video.
     """
 
     def __init__(self) -> None:
@@ -41,4 +43,8 @@ class FakeYouTubeApi:
             response = read_fixture("videos.json")
             response["items"] = [i for i in response["items"] if i["id"] in requested]
             return httpx.Response(200, json=response)
+        if endpoint == "commentThreads":
+            if request.url.params["videoId"] == "eG0tXlljTtI":
+                return httpx.Response(200, json=read_fixture("comment_threads.json"))
+            return httpx.Response(200, json={"items": []})
         return httpx.Response(404)

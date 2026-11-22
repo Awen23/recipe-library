@@ -3,6 +3,7 @@ import pytest
 
 from recipes.youtube import (
     PAGE_SIZE,
+    Comment,
     QuotaExceededError,
     Video,
     YouTubeClient,
@@ -154,3 +155,46 @@ def test_videos_batches_ids_in_groups_of_50() -> None:
         client.videos(video_ids)
 
     assert [len(batch) for batch in requested_batches] == [PAGE_SIZE, PAGE_SIZE, 20]
+
+
+def test_creator_comments_keeps_only_the_videos_own_channel(
+    fake_api: FakeYouTubeApi,
+) -> None:
+    with YouTubeClient("test-key", transport=fake_api.transport) as client:
+        comments = client.creator_comments("eG0tXlljTtI")
+
+    # Of the three comments, only the first is by the channel that posted the video.
+    assert comments == [
+        Comment(
+            id="Ugwnsgb1qinFFq2Wf3B4AaABAg",
+            text=(
+                "I feel guilty of using a lot of plastic wrap to make these... But I "
+                "haven't thought of a good substitute. If you have a good idea, "
+                "please share in the comment!"
+            ),
+            published_at="2022-08-28T07:08:42Z",
+        )
+    ]
+
+
+def test_creator_comments_asks_for_the_top_comments_as_plain_text(
+    fake_api: FakeYouTubeApi,
+) -> None:
+    with YouTubeClient("test-key", transport=fake_api.transport) as client:
+        client.creator_comments("eG0tXlljTtI")
+
+    [request] = fake_api.requests
+    assert request.url.path.endswith("/commentThreads")
+    assert request.url.params["videoId"] == "eG0tXlljTtI"
+    assert request.url.params["order"] == "relevance"
+    assert request.url.params["maxResults"] == "20"
+    # Without this, the text comes back as HTML, with `<br>` and escaped characters.
+    assert request.url.params["textFormat"] == "plainText"
+
+
+def test_creator_comments_is_empty_when_comments_are_turned_off() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json=read_fixture("error_comments_disabled.json"))
+
+    with YouTubeClient("test-key", transport=httpx.MockTransport(handler)) as client:
+        assert client.creator_comments("eG0tXlljTtI") == []
