@@ -406,6 +406,25 @@ def save_recipes(
     return RecipesSummary(added=len(new_rows), removed=removed)
 
 
+def remove_recipes_of_removed_videos(engine: Engine) -> int:
+    """Mark the recipes of each video that has left the playlist as removed, at the
+    time the video was. Returns how many were marked."""
+    removed_at = (
+        select(videos.c.removed_at)
+        .where(videos.c.id == recipes.c.video_id)
+        .scalar_subquery()
+    )
+    removed_videos = select(videos.c.id).where(videos.c.removed_at.is_not(None))
+    with engine.begin() as connection:
+        return connection.execute(
+            update(recipes)
+            .where(
+                recipes.c.video_id.in_(removed_videos), recipes.c.removed_at.is_(None)
+            )
+            .values(removed_at=removed_at)
+        ).rowcount
+
+
 def _name_fields(recipe: Recipe) -> dict[str, Any]:
     return {
         "name": recipe.name,

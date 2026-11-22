@@ -99,6 +99,8 @@ def _build(_args: argparse.Namespace) -> int:
         summary = storage.save_recipes(engine, video_id, found)
         added, removed = added + summary.added, removed + summary.removed
         total += len(found)
+    # Videos that left the playlist aren't split again; their recipes go with them.
+    removed += storage.remove_recipes_of_removed_videos(engine)
 
     print(
         f"Built {total} recipes from {len(videos) - failed} videos "

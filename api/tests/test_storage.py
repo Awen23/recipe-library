@@ -20,6 +20,7 @@ from recipes.storage import (
     creator_comments,
     needs_migrating,
     recipes,
+    remove_recipes_of_removed_videos,
     save_answer,
     save_playlist,
     save_recipes,
@@ -308,3 +309,16 @@ def test_recipes_past_the_last_one_found_are_marked_as_removed(
     assert [r["removed_at"] for r in whr7_recipes(saved)] == [None, None] + [
         SECOND_FETCH
     ] * 3
+
+
+def test_the_recipes_of_a_removed_video_are_marked_as_removed(
+    saved: Engine, playlist: Playlist
+) -> None:
+    save_whr7_recipes(saved)
+    # Not from the data: the meal prep video leaves the playlist.
+    rest = tuple(v for v in playlist.videos if v.id != "whr7iOKRXTA")
+    save_playlist(replace(playlist, videos=rest), saved, now=SECOND_FETCH)
+
+    assert remove_recipes_of_removed_videos(saved) == 5
+    assert {r["removed_at"] for r in whr7_recipes(saved)} == {SECOND_FETCH}
+    assert remove_recipes_of_removed_videos(saved) == 0  # already marked
