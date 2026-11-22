@@ -10,6 +10,7 @@ from recipes.pages import (
     MAX_BYTES,
     NO_RECIPE,
     NOT_A_PAGE,
+    PRIVATE,
     RECIPE,
     RETRY_PAUSE_SECONDS,
     SAME_SITE_PAUSE_SECONDS,
@@ -158,3 +159,36 @@ def test_redirect_loop() -> None:
     loop = httpx2.Response(302, headers={"location": "https://a.test/"})
 
     assert FakeWeb({"https://a.test/": loop}).fetch("https://a.test/").outcome == ERROR
+
+
+def test_a_charset_that_is_not_text_is_read_as_utf8() -> None:
+    page = httpx2.Response(
+        200, headers={"content-type": "text/html; charset=base64"}, content=b"<p>Hi"
+    )
+
+    assert FakeWeb({"https://a.test/": page}).fetch("https://a.test/").outcome == (
+        NO_RECIPE
+    )
+
+
+def test_content_type_in_capitals() -> None:
+    page = httpx2.Response(200, headers={"content-type": "Text/HTML"}, content=b"")
+
+    assert FakeWeb({"https://a.test/": page}).fetch("https://a.test/").outcome == (
+        NO_RECIPE
+    )
+
+
+def test_does_not_fetch_private_addresses() -> None:
+    web = FakeWeb(
+        {
+            "https://short.test/abc": httpx2.Response(
+                302, headers={"location": "http://192.168.1.1/admin"}
+            )
+        }
+    )
+
+    pages = web.fetch_all(["https://short.test/abc", "http://localhost:8000/"])
+
+    assert [page.outcome for page in pages] == [PRIVATE, PRIVATE]
+    assert [str(r.url) for r in web.requests] == ["https://short.test/abc"]

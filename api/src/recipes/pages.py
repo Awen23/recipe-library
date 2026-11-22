@@ -1,5 +1,6 @@
 """Fetch the web pages that videos link to, politely, and read their recipes."""
 
+import ipaddress
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ SKIPPED = "skipped"  # it redirected to a skipped site, which isn't fetched
 BLOCKED = "blocked"  # the site asked for a browser check, which isn't attempted
 NOT_A_PAGE = "not a web page"  # a PDF, image or other file
 TOO_BIG = "too big"
+PRIVATE = "private address"  # this computer or its network, which isn't fetched
 ERROR = "error"  # no response: a timeout, a bad address, too many redirects
 
 
@@ -79,6 +81,8 @@ class PageFetcher:
             # past the redirect.
             if is_skipped(str(request.url)):
                 return Page(url, str(request.url), SKIPPED, None)
+            if _is_private(request.url.host):
+                return Page(url, str(request.url), PRIVATE, None)
             try:
                 response = self._send(request)
             except httpx2.HTTPError:
@@ -114,7 +118,7 @@ class PageFetcher:
             return Page(url, final_url, BLOCKED, None)
         if response.status_code >= 400:
             return Page(url, final_url, f"HTTP {response.status_code}", None)
-        if "html" not in response.headers.get("content-type", "text/html"):
+        if "html" not in response.headers.get("content-type", "text/html").lower():
             return Page(url, final_url, NOT_A_PAGE, None)
         try:
             body = bytearray()
@@ -124,9 +128,24 @@ class PageFetcher:
                     return Page(url, final_url, TOO_BIG, None)
         except httpx2.HTTPError:
             return Page(url, final_url, ERROR, None)
-        html = body.decode(response.encoding or "utf-8", errors="replace")
+        try:
+            html = body.decode(response.encoding or "utf-8", errors="replace")
+        except LookupError:  # a charset Python knows that isn't text, like "base64"
+            html = body.decode("utf-8", errors="replace")
         try:
             recipe = read_recipe(html, final_url)
         except NoRecipeError:
             return Page(url, final_url, NO_RECIPE, None)
         return Page(url, final_url, RECIPE, recipe)
+
+
+def _is_private(host: str) -> bool:
+    """Whether `host` is this computer, or an IP address on a private network.
+    Links are untrusted, so one mustn't reach something only this computer can."""
+    if host == "localhost" or host.endswith(".localhost"):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:  # a hostname
+        return False
+    return not address.is_global
