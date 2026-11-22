@@ -2,8 +2,10 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from recipes.playlist import Playlist
-from recipes.storage import save_playlist
+from recipes.storage import create_engine, save_playlist
 from recipes.youtube import Video
 
 from fakes import read_fixture
@@ -67,3 +69,28 @@ def test_save_keeps_non_english_text_readable(tmp_path: Path) -> None:
     # The Japanese in this title is written as real characters, not as escape codes
     # (a backslash, "u" and four hex digits), so the file stays readable.
     assert "ヴィーガン" in path.read_text(encoding="utf-8")
+
+
+def test_create_engine_makes_the_database_and_its_folder(tmp_path: Path) -> None:
+    path = tmp_path / "data" / "recipes.db"
+
+    with create_engine(f"sqlite:///{path}").connect():
+        pass
+
+    assert path.exists()
+
+
+def test_create_engine_turns_on_foreign_keys(tmp_path: Path) -> None:
+    engine = create_engine(f"sqlite:///{tmp_path / 'recipes.db'}")
+
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("PRAGMA foreign_keys").scalar() == 1
+
+
+def test_create_engine_uses_database_url_when_none_is_given(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url = f"sqlite:///{tmp_path / 'other.db'}"
+    monkeypatch.setenv("DATABASE_URL", url)
+
+    assert create_engine().url.database == str(tmp_path / "other.db")

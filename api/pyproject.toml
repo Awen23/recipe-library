@@ -7,7 +7,12 @@ name = "recipe-library"
 version = "0.1.0"
 description = "A searchable library of the recipes in a YouTube cooking playlist."
 requires-python = ">=3.14"
-dependencies = ["httpx>=0.28", "python-dotenv>=1.2"]
+dependencies = [
+    "alembic>=1.20",
+    "httpx>=0.28",
+    "python-dotenv>=1.2",
+    "sqlalchemy>=2.1",
+]
 classifiers = ["Private :: Do Not Upload"]
 
 [project.scripts]
@@ -25,6 +30,22 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["src/recipes"]
 
+[tool.alembic]
+script_location = "%(here)s/migrations"
+
+# Tidy each new migration file so it passes the same checks as the rest of the code.
+[[tool.alembic.post_write_hooks]]
+name = "ruff_fix"  # removes the imports an empty migration doesn't use
+type = "module"
+module = "ruff"
+options = "check --fix --quiet REVISION_SCRIPT_FILENAME"
+
+[[tool.alembic.post_write_hooks]]
+name = "ruff_format"
+type = "module"
+module = "ruff"
+options = "format --quiet REVISION_SCRIPT_FILENAME"
+
 [tool.pytest]
 testpaths = ["tests"]
 pythonpath = ["tests"]  # lets tests import helpers from tests/fakes.py
@@ -41,4 +62,4 @@ known-local-folder = ["fakes"]
 
 [tool.mypy]
 python_version = "3.14"
-files = ["src", "tests"]
+files = ["src", "tests", "migrations"]
